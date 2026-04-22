@@ -128,7 +128,92 @@ spx_binary_name_for_platform() {
   esac
 }
 
-spx_smoke_reached_success() {
+assert_macos_binary_arch() {
+  local binary_path="$1"
+  local expected_arch="$2"
+  local actual_archs
+
+  if ! command -v lipo >/dev/null 2>&1; then
+    log_error "lipo command is required to verify macOS binaries"
+    exit 1
+  fi
+
+  actual_archs="$(lipo -archs "$binary_path" 2>/dev/null | tr -s '[:space:]' ' ' | sed -e 's/^ //' -e 's/ $//')"
+  if [ -z "$actual_archs" ]; then
+    log_error "failed to inspect macOS binary architecture: $binary_path"
+    exit 1
+  fi
+
+  case " $actual_archs " in
+    *" $expected_arch "*)
+      log_success "macOS binary architecture matches target: $actual_archs"
+      ;;
+    *)
+      log_error "macOS binary architecture mismatch (expected $expected_arch, got $actual_archs)"
+      exit 1
+      ;;
+  esac
+}
+
+assert_binary_arch() {
+  local binary_path="$1"
+  local platform="$2"
+  local arch="$3"
+  local description
+
+  if ! command -v file >/dev/null 2>&1; then
+    log_error "file command is required to verify binary architecture"
+    exit 1
+  fi
+
+  description="$(file "$binary_path")"
+  log_info "Binary architecture: $description"
+
+  case "$platform/$arch" in
+    linux/x64)
+      case "$description" in
+        *"ELF 64-bit"*"x86-64"*) return ;;
+      esac
+      ;;
+    linux/x86)
+      case "$description" in
+        *"ELF 32-bit"*"Intel 80386"*) return ;;
+      esac
+      ;;
+    linux/arm64)
+      case "$description" in
+        *"ELF 64-bit"*"ARM aarch64"*) return ;;
+      esac
+      ;;
+    windows/x64)
+      case "$description" in
+        *"PE32+ executable"*"x86-64"*) return ;;
+      esac
+      ;;
+    windows/x86)
+      case "$description" in
+        *"PE32 executable"*"Intel 80386"*) return ;;
+      esac
+      ;;
+    macos/x64)
+      assert_macos_binary_arch "$binary_path" "x86_64"
+      return
+      ;;
+    macos/arm64)
+      assert_macos_binary_arch "$binary_path" "arm64"
+      return
+      ;;
+    *)
+      log_error "unsupported binary architecture target: $platform/$arch"
+      exit 1
+      ;;
+  esac
+
+  log_error "binary architecture mismatch for $platform/$arch"
+  exit 1
+}
+
+spx_run_reached_success() {
   local log_path="$1"
   grep -Eq 'Spx(CI)?RunSucc' "$log_path"
 }
@@ -137,5 +222,5 @@ should_tolerate_windows_gdspxrt_shutdown_exit() {
   local runner_platform="$1"
   local log_path="$2"
 
-  [ "$runner_platform" = "windows" ] && spx_smoke_reached_success "$log_path"
+  [ "$runner_platform" = "windows" ] && spx_run_reached_success "$log_path"
 }
