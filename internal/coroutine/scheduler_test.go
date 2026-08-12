@@ -23,8 +23,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goplus/spx/v3/internal/engine/platform"
+	gdx "github.com/goplus/spx/v3/pkg/spx/pkg/engine"
 )
+
+type mainThreadTestPlatform struct {
+	gdx.IPlatformMgr
+	main bool
+}
+
+func (p mainThreadTestPlatform) IsMainThread() bool {
+	return p.main
+}
+
+func setMainThreadForTest(t *testing.T, main bool) {
+	t.Helper()
+	previous := gdx.PlatformMgr
+	gdx.PlatformMgr = mainThreadTestPlatform{main: main}
+	t.Cleanup(func() { gdx.PlatformMgr = previous })
+}
 
 func TestUpdateReadsGCStatsOnlyWhenPerfDebugEnabled(t *testing.T) {
 	co := New(nil)
@@ -72,17 +88,46 @@ func TestLastUpdateStatsAreScopedToManager(t *testing.T) {
 }
 
 func TestWaitMainThreadFastPathOnMainThread(t *testing.T) {
+	setMainThreadForTest(t, true)
 	co := New(nil)
 	called := false
 
-	platform.RunOnMainThread(func() {
-		co.WaitMainThread(func() {
-			called = true
-		})
+	co.WaitMainThread(func() {
+		called = true
 	})
 
 	if !called {
 		t.Fatal("WaitMainThread should execute immediately on the main thread")
+	}
+}
+
+func TestWaitMainThreadQueuesFromWorker(t *testing.T) {
+	if runtime.GOOS == "js" {
+		t.Skip("Web calls its local engine bridge directly")
+	}
+	setMainThreadForTest(t, false)
+	co := New(nil)
+	co.OnInited()
+	returned := make(chan struct{})
+
+	go func() {
+		co.WaitMainThread(func() {})
+		close(returned)
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for co.currentJobs.Count() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("WaitMainThread did not enqueue worker call")
+		}
+		runtime.Gosched()
+	}
+
+	co.Update()
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		t.Fatal("WaitMainThread did not return after Update")
 	}
 }
 

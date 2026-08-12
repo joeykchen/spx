@@ -1,3 +1,5 @@
+//go:build js
+
 /*
  * Copyright (c) 2021 The XGo Authors (xgo.dev). All rights reserved.
  *
@@ -16,10 +18,26 @@
 
 package platform
 
-import gdx "github.com/goplus/spx/v3/pkg/spx/pkg/engine"
+import (
+	"testing"
 
-// CanCallEngineDirectly reports whether an engine call can run without
-// main-thread dispatch. Web short-circuits before touching the Godot bridge.
-func CanCallEngineDirectly() bool {
-	return IsWeb() || gdx.PlatformMgr.IsMainThread()
+	gdx "github.com/goplus/spx/v3/pkg/spx/pkg/engine"
+)
+
+type panicPlatformMgr struct {
+	gdx.IPlatformMgr
+}
+
+func (panicPlatformMgr) IsMainThread() bool {
+	panic("Web should not call Godot to check the main thread")
+}
+
+func TestCanCallEngineDirectlySkipsGodotOnWeb(t *testing.T) {
+	previous := gdx.PlatformMgr
+	t.Cleanup(func() { gdx.PlatformMgr = previous })
+	gdx.PlatformMgr = panicPlatformMgr{}
+
+	if !CanCallEngineDirectly() {
+		t.Fatal("Web engine calls should run directly")
+	}
 }

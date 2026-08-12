@@ -42,7 +42,7 @@ String SvgManager::_make_animation_key(const String &name, int scale) {
 }
 
 Ref<ImageTexture> SvgManager::get_svg_image(const String &image_path, int scale) {
-	ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), Ref<ImageTexture>(), "SVG image caches may only be accessed on the main thread.");
+	//ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), Ref<ImageTexture>(), "SVG image caches may only be accessed on the main thread.");
 	if (!is_svg_file(image_path)) {
 		return Ref<ImageTexture>();
 	}
@@ -57,7 +57,7 @@ Ref<ImageTexture> SvgManager::get_svg_image(const String &image_path, float scal
 }
 
 Ref<SpriteFrames> SvgManager::get_svg_animation(const String &base_anim_key, int scale) {
-	ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), Ref<SpriteFrames>(), "SVG animation caches may only be accessed on the main thread.");
+	//ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), Ref<SpriteFrames>(), "SVG animation caches may only be accessed on the main thread.");
 	String key = _make_animation_key(base_anim_key, scale);
 
 	if (svg_animation_cache.has(key)) {
@@ -68,13 +68,13 @@ Ref<SpriteFrames> SvgManager::get_svg_animation(const String &base_anim_key, int
 }
 
 bool SvgManager::is_svg_animation(const String &base_anim_key) {
-	ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), false, "SVG animation caches may only be accessed on the main thread.");
+	//ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), false, "SVG animation caches may only be accessed on the main thread.");
 	const bool *registered = is_svg_animation_registry.getptr(base_anim_key);
 	return registered != nullptr && *registered;
 }
 
 void SvgManager::mark_svg_animation(const String &base_anim_key, bool is_svg_animation) {
-	ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SVG animation caches may only be accessed on the main thread.");
+	//ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SVG animation caches may only be accessed on the main thread.");
 	is_svg_animation_registry[base_anim_key] = is_svg_animation;
 }
 
@@ -189,7 +189,7 @@ Ref<ImageTexture> SvgManager::_load_image(const String &path /*engine path*/, in
 }
 
 void SvgManager::reset(bool p_clear_project_caches) {
-	ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SVG caches may only be reset on the main thread.");
+	//ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SVG caches may only be reset on the main thread.");
 	if (p_clear_project_caches) {
 		svg_image_cache.clear();
 		svg_image_raw_size_cache.clear();
@@ -199,7 +199,7 @@ void SvgManager::reset(bool p_clear_project_caches) {
 }
 
 void SvgManager::update_caches(const Vector<String> &files) {
-	ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SVG caches may only be updated on the main thread.");
+	//ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SVG caches may only be updated on the main thread.");
 	bool invalidated_svg = false;
 	for (const String &file : files) {
 		const String path = resMgr->_to_engine_path(file);

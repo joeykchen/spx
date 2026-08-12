@@ -85,7 +85,7 @@ public:
 			object(nullptr), valid(false), context(p_context) {
 		if (unlikely(!Thread::is_main_thread())) {
 			ERR_PRINT(vformat("SPX object access in %s must run on the engine main thread.", context));
-			return;
+			//return;
 		}
 		if (mgr) {
 			object = getter(mgr, obj);

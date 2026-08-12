@@ -715,6 +715,10 @@ func (pself *platformMgr) IsDebugMode() bool {
 	retValue := CallPlatformIsDebugMode()
 	return ToBool(retValue)
 }
+func (pself *platformMgr) IsMainThread() bool {
+	retValue := CallPlatformIsMainThread()
+	return ToBool(retValue)
+}
 func (pself *platformMgr) GetTimeScale() float64 {
 	retValue := CallPlatformGetTimeScale()
 	return ToFloat64(retValue)

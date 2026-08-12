@@ -14,12 +14,25 @@
  * limitations under the License.
  */
 
-package platform
+package spx
 
-import gdx "github.com/goplus/spx/v3/pkg/spx/pkg/engine"
+import (
+	"os"
+	"testing"
 
-// CanCallEngineDirectly reports whether an engine call can run without
-// main-thread dispatch. Web short-circuits before touching the Godot bridge.
-func CanCallEngineDirectly() bool {
-	return IsWeb() || gdx.PlatformMgr.IsMainThread()
+	gdx "github.com/goplus/spx/v3/pkg/spx/pkg/engine"
+)
+
+type mainThreadTestPlatform struct {
+	gdx.IPlatformMgr
+}
+
+func (mainThreadTestPlatform) IsMainThread() bool {
+	return true
+}
+
+// TestMain supplies the raw manager normally installed by gdengine.Link.
+func TestMain(m *testing.M) {
+	gdx.PlatformMgr = mainThreadTestPlatform{}
+	os.Exit(m.Run())
 }

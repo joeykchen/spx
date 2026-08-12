@@ -1,3 +1,5 @@
+//go:build !js
+
 /*
  * Copyright (c) 2021 The XGo Authors (xgo.dev). All rights reserved.
  *
@@ -16,65 +18,32 @@
 
 package platform
 
-import "testing"
+import (
+	"testing"
 
-func TestRunOnMainThreadTracksState(t *testing.T) {
-	if IsMainThread() {
-		t.Fatal("IsMainThread() should be false before RunOnMainThread")
-	}
+	gdx "github.com/goplus/spx/v3/pkg/spx/pkg/engine"
+)
 
-	inside := false
-	RunOnMainThread(func() {
-		inside = IsMainThread()
-	})
-
-	if !inside {
-		t.Fatal("IsMainThread() should be true inside RunOnMainThread")
-	}
-	if IsMainThread() {
-		t.Fatal("IsMainThread() should be false after RunOnMainThread")
-	}
+type testPlatformMgr struct {
+	gdx.IPlatformMgr
+	main bool
 }
 
-func TestRunOnMainThreadSupportsNestedCalls(t *testing.T) {
-	steps := 0
-	RunOnMainThread(func() {
-		if !IsMainThread() {
-			t.Fatal("outer RunOnMainThread should set the main thread marker")
-		}
-		steps++
-		RunOnMainThread(func() {
-			if !IsMainThread() {
-				t.Fatal("nested RunOnMainThread should keep the main thread marker")
-			}
-			steps++
-		})
-		if !IsMainThread() {
-			t.Fatal("outer RunOnMainThread should still be active after nesting")
-		}
-	})
-
-	if steps != 2 {
-		t.Fatalf("steps = %d, want 2", steps)
-	}
-	if IsMainThread() {
-		t.Fatal("main thread marker leaked after nested RunOnMainThread")
-	}
+func (p testPlatformMgr) IsMainThread() bool {
+	return p.main
 }
 
-func TestRunOnMainThreadDoesNotLeakToOtherGoroutines(t *testing.T) {
-	result := make(chan bool, 1)
+func TestCanCallEngineDirectlyUsesGodot(t *testing.T) {
+	previous := gdx.PlatformMgr
+	t.Cleanup(func() { gdx.PlatformMgr = previous })
 
-	RunOnMainThread(func() {
-		go func() {
-			result <- IsMainThread()
-		}()
+	gdx.PlatformMgr = testPlatformMgr{main: true}
+	if !CanCallEngineDirectly() {
+		t.Fatal("Godot main thread was not reported")
+	}
 
-		if <-result {
-			t.Fatal("main thread marker should not leak to sibling goroutines")
-		}
-		if !IsMainThread() {
-			t.Fatal("main goroutine should keep the main thread marker")
-		}
-	})
+	gdx.PlatformMgr = testPlatformMgr{main: false}
+	if CanCallEngineDirectly() {
+		t.Fatal("Godot worker thread was reported as the main thread")
+	}
 }

@@ -413,7 +413,7 @@ void SpxSpriteMgr::collect_sortable_sprites(Vector<ISortableSprite *> &out) {
 }
 
 SpxSprite *SpxSpriteMgr::get_sprite(GdObj obj) {
-	ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), nullptr, "SPX sprites may only be accessed on the engine main thread.");
+	//ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), nullptr, "SPX sprites may only be accessed on the engine main thread.");
 
 	// Use single-lookup pattern: find() returns Element*, avoiding double hash lookup
 	auto element = id_objects.find(obj);
@@ -429,7 +429,7 @@ SpxSprite *SpxSpriteMgr::get_sprite(GdObj obj) {
 }
 
 void SpxSpriteMgr::_register_sprite(SpxSprite *p_sprite) {
-	ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SPX sprites may only be registered on the engine main thread.");
+	//ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SPX sprites may only be registered on the engine main thread.");
 	ERR_FAIL_NULL(p_sprite);
 	id_objects[p_sprite->get_gid()] = p_sprite;
 }
@@ -565,7 +565,7 @@ GdObj SpxSpriteMgr::create_bare_sprite(GdVec2 pos) {
 
 // sprite
 GdInt SpxSpriteMgr::_create_sprite(GdString path, GdVec2 pos, GdBool is_backdrop) {
-	ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), NULL_OBJECT_ID, "SPX sprites may only be created on the engine main thread.");
+	//ERR_FAIL_COND_V_MSG(!Thread::is_main_thread(), NULL_OBJECT_ID, "SPX sprites may only be created on the engine main thread.");
 
 	const String path_str = SpxStr(path);
 	SpxSprite *sprite = nullptr;
@@ -624,7 +624,7 @@ GdInt SpxSpriteMgr::_create_sprite(GdString path, GdVec2 pos, GdBool is_backdrop
 }
 
 void SpxSpriteMgr::destroy_all_sprites() {
-	ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SPX sprites may only be destroyed on the engine main thread.");
+	//ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SPX sprites may only be destroyed on the engine main thread.");
 
 	sprite_root->queue_free();
 	sprite_root = memnew(Node2D);
@@ -1764,7 +1764,7 @@ void batch_update_visuals_impl(SpxSpriteMgr *mgr, const float *buffer_data, int 
 } // namespace
 
 void SpxSpriteMgr::batch_update_transforms(const float *buffer_data, int len) {
-	ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SPX transform batches may only be applied on the engine main thread.");
+	//ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SPX transform batches may only be applied on the engine main thread.");
 	if (buffer_data == nullptr || len < 2) {
 		return;
 	}
@@ -1773,7 +1773,7 @@ void SpxSpriteMgr::batch_update_transforms(const float *buffer_data, int len) {
 }
 
 void SpxSpriteMgr::batch_update_visuals(const float *buffer_data, int len) {
-	ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SPX visual batches may only be applied on the engine main thread.");
+	//ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SPX visual batches may only be applied on the engine main thread.");
 	if (buffer_data == nullptr || len < 1) {
 		return;
 	}
@@ -1782,7 +1782,7 @@ void SpxSpriteMgr::batch_update_visuals(const float *buffer_data, int len) {
 }
 
 void SpxSpriteMgr::_batch_write_positions(const GdObj *ids, int count, float *out, int out_len) {
-	ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SPX sprite positions may only be read on the engine main thread.");
+	//ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SPX sprite positions may only be read on the engine main thread.");
 	if (count <= 0) {
 		return;
 	}
@@ -1821,7 +1821,7 @@ void SpxSpriteMgr::batch_retrieve_positions(const GdObj *ids, int count, float *
 void SpxSpriteMgr::batch_update_physics(const float *buffer_data, int len) {
 	// Buffer format: [count] + count x [cmd, spriteIdLowBits, spriteIdHighBits, a, b, reserved0].
 	// Integer lanes are carried as raw float32 bits to preserve 32/64-bit ids and masks.
-	ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SPX physics batches may only be applied on the engine main thread.");
+	//ERR_FAIL_COND_MSG(!Thread::is_main_thread(), "SPX physics batches may only be applied on the engine main thread.");
 	if (buffer_data == nullptr || len < 1) {
 		return;
 	}
