@@ -200,6 +200,8 @@ func TestCompareAndEqual(t *testing.T) {
 		compare int
 		equal   bool
 	}{
+		{name: "NaN versus number", v1: math.NaN(), v2: 1, compare: 1, equal: false},
+		{name: "number versus NaN", v1: 1, v2: math.NaN(), compare: -1, equal: false},
 		{name: "case insensitive strings", v1: "p", v2: "P", compare: 0, equal: true},
 		{name: "numeric strings", v1: "01", v2: "1", compare: 0, equal: true},
 		{name: "number and string", v1: 2, v2: "10", compare: -1, equal: false},
@@ -236,23 +238,24 @@ func TestOutOfRangeListItemDoesNotEqualZero(t *testing.T) {
 	}
 }
 
-func TestEqualUsesToleranceOnlyForNumericEquality(t *testing.T) {
+func TestEqualUsesExactNumericComparison(t *testing.T) {
 	tests := []struct {
 		name  string
 		v1    any
 		v2    any
 		equal bool
 	}{
-		{name: "rounding error", v1: 116.00000000000001, v2: 116.0, equal: true},
-		{name: "numeric string rounding error", v1: "116.00000000000001", v2: 116.0, equal: true},
-		{name: "near zero", v1: 0.0, v2: 1e-12, equal: true},
-		{name: "relative tolerance at large magnitude", v1: 1e12, v2: 1e12 + 100, equal: true},
+		{name: "rounding error", v1: 116.00000000000001, v2: 116.0, equal: false},
+		{name: "numeric string rounding error", v1: "116.00000000000001", v2: 116.0, equal: false},
+		{name: "near zero", v1: 0.0, v2: 1e-12, equal: false},
+		{name: "large magnitude difference", v1: 1e12, v2: 1e12 + 100, equal: false},
 		{name: "different integers", v1: 116.0, v2: 117.0, equal: false},
 		{name: "meaningful fractional difference", v1: 116.0, v2: 116.5, equal: false},
 		{name: "same positive infinity", v1: math.Inf(1), v2: math.Inf(1), equal: true},
 		{name: "opposite infinities", v1: math.Inf(1), v2: math.Inf(-1), equal: false},
 		{name: "finite and infinity", v1: 1.0, v2: math.Inf(1), equal: false},
-		{name: "NaN", v1: math.NaN(), v2: math.NaN(), equal: false},
+		{name: "NaN versus number", v1: math.NaN(), v2: 1, equal: false},
+		{name: "NaN", v1: math.NaN(), v2: math.NaN(), equal: true},
 	}
 
 	for _, tt := range tests {
@@ -267,8 +270,8 @@ func TestEqualUsesToleranceOnlyForNumericEquality(t *testing.T) {
 	for range 8 {
 		accumulated += 0.02
 	}
-	if got := accumulated * 100; !Equal(got, 116) {
-		t.Fatalf("Equal(%v, 116) = false after repeated floating-point addition", got)
+	if got := accumulated * 100; Equal(got, 116) {
+		t.Fatalf("Equal(%v, 116) = true after repeated floating-point addition", got)
 	}
 
 	if got := Compare(116.00000000000001, 116.0); got != 1 {
@@ -303,5 +306,28 @@ func TestPenColorParamFromString(t *testing.T) {
 				t.Errorf("PenColorParamFromString(%q) = %v, want %v", tt.input, got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestListQueriesUseExactNumericEquality(t *testing.T) {
+	list := NewList(1000000000)
+	if list.Contains(1000000001) || list.IndexOf(1000000001) != Invalid {
+		t.Fatal("list queries matched a distinct numeric value")
+	}
+	if !NewValue(1000000000).Equal(1000000000) || NewValue(1000000000).Equal(1000000001) {
+		t.Fatal("Value.Equal did not use exact numeric equality")
+	}
+}
+
+func TestExactComparisonAcrossValueAndList(t *testing.T) {
+	for _, number := range []float64{0, -1, 1, 1e12, math.MaxFloat64, math.Inf(-1)} {
+		next := math.Nextafter(number, math.Inf(1))
+		list := NewList(number, next)
+		if Compare(number, next) != -1 || Compare(next, number) != 1 {
+			t.Fatalf("adjacent numbers lost their ordering: %g, %g", number, next)
+		}
+		if Equal(number, next) || NewValue(number).Equal(next) || list.IndexOf(next) != 1 {
+			t.Fatalf("adjacent values collapsed: %g, %g", number, next)
+		}
 	}
 }

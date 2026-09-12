@@ -17,16 +17,12 @@
 package spx
 
 import (
+	"cmp"
 	"math"
 	"strings"
 
 	"github.com/goplus/spx/v3/internal/engine"
 	itime "github.com/goplus/spx/v3/internal/time"
-)
-
-const (
-	compareAbsTolerance = 1e-9
-	compareRelTolerance = 1e-9
 )
 
 // Rand__0 returns a random integer between from and to (inclusive).
@@ -79,38 +75,17 @@ func Contains(s, substr string) bool {
 func Compare(v1, v2 any) int {
 	if n1, ok1 := toCompareNumber(v1); ok1 {
 		if n2, ok2 := toCompareNumber(v2); ok2 {
-			switch {
-			case n1 < n2:
-				return -1
-			case n1 > n2:
-				return 1
-			default:
-				return 0
-			}
+			return cmp.Compare(n1, n2)
 		}
 	}
 
 	s1 := strings.ToLower(toString(v1))
 	s2 := strings.ToLower(toString(v2))
-	switch {
-	case s1 < s2:
-		return -1
-	case s1 > s2:
-		return 1
-	default:
-		return 0
-	}
+	return strings.Compare(s1, s2)
 }
 
 // Equal reports whether two values match Scratch's = operator semantics.
-// Numeric values use a small absolute and relative tolerance to absorb
-// floating-point rounding errors. Compare remains exact for ordering.
 func Equal(v1, v2 any) bool {
-	if n1, ok1 := toCompareNumber(v1); ok1 {
-		if n2, ok2 := toCompareNumber(v2); ok2 {
-			return nearlyEqual(n1, n2)
-		}
-	}
 	return Compare(v1, v2) == 0
 }
 
@@ -169,21 +144,6 @@ func PenColorParamFromString(s string) PenColorParam {
 	}
 }
 
-func nearlyEqual(a, b float64) bool {
-	if a == b {
-		return true
-	}
-	if math.IsInf(a, 0) || math.IsInf(b, 0) {
-		return false
-	}
-	diff := math.Abs(a - b)
-	if diff <= compareAbsTolerance {
-		return true
-	}
-	largest := math.Max(math.Abs(a), math.Abs(b))
-	return diff <= largest*compareRelTolerance
-}
-
 func toCompareNumber(v any) (float64, bool) {
 	v = fromObj(v)
 	if v == nil {
@@ -192,5 +152,6 @@ func toCompareNumber(v any) (float64, bool) {
 	if s, ok := v.(string); ok && strings.TrimSpace(s) == "" {
 		return 0, false
 	}
-	return toFloat64Any(v)
+	n, ok := toFloat64Any(v)
+	return n, ok && !math.IsNaN(n)
 }

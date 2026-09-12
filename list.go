@@ -107,12 +107,7 @@ func (p *List) String() string {
 
 // Contains returns true if the list contains the element v.
 func (p *List) Contains(v obj) bool {
-	for _, item := range p.data {
-		if Equal(item, v) {
-			return true
-		}
-	}
-	return false
+	return p.IndexOf(v) != Invalid
 }
 
 // Append adds the element v to the end of the list.
