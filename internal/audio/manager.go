@@ -17,12 +17,8 @@
 package audio
 
 import (
-	"math"
-
 	"github.com/goplus/spx/v3/internal/engine"
 )
-
-const scratchPitchStepsPerOctave = 120
 
 type Backend interface {
 	CreateAudio() engine.Object
@@ -205,46 +201,6 @@ func (m *Manager) Update() {
 	}
 }
 
-func (m *Manager) GetPan(soundObj engine.Object) float64 {
-	return m.backend.GetPan(soundObj) * 100
-}
-
-func (m *Manager) SetPan(soundObj engine.Object, value float64) {
-	m.backend.SetPan(soundObj, value/100)
-}
-
-func (m *Manager) ChangePan(soundObj engine.Object, delta float64) {
-	m.SetPan(soundObj, m.GetPan(soundObj)+delta)
-}
-
-func (m *Manager) GetPitch(soundObj engine.Object) float64 {
-	return pitchScaleToScratchEffect(m.backend.GetPitch(soundObj))
-}
-
-func (m *Manager) SetPitch(soundObj engine.Object, value float64) {
-	m.backend.SetPitch(soundObj, scratchPitchEffectToScale(value))
-}
-
-func (m *Manager) ChangePitch(soundObj engine.Object, delta float64) {
-	m.SetPitch(soundObj, m.GetPitch(soundObj)+delta)
-}
-
-func (m *Manager) GetVolume(soundObj engine.Object) float64 {
-	return m.backend.GetVolume(soundObj) * 100
-}
-
-func (m *Manager) SetVolume(soundObj engine.Object, value float64) {
-	val := value / 100
-	if val <= 0 {
-		val = 0.01
-	}
-	m.backend.SetVolume(soundObj, val)
-}
-
-func (m *Manager) ChangeVolume(soundObj engine.Object, delta float64) {
-	m.SetVolume(soundObj, m.GetVolume(soundObj)+delta)
-}
-
 func (m *Manager) pruneDeadID(path string) int64 {
 	id := m.path2id[path]
 	if id != 0 && m.backend.IsPlaying(id) {
@@ -327,15 +283,4 @@ func (m *Manager) preparePlaybacksForRelease(soundObj engine.Object) {
 		}
 		m.removeID(id)
 	}
-}
-
-func scratchPitchEffectToScale(value float64) float64 {
-	return math.Pow(2, value/scratchPitchStepsPerOctave)
-}
-
-func pitchScaleToScratchEffect(scale float64) float64 {
-	if scale <= 0 {
-		return 0
-	}
-	return scratchPitchStepsPerOctave * math.Log2(scale)
 }
