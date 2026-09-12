@@ -130,27 +130,6 @@ func (t *transformComponent) moveForward(step float64) {
 	t.moveTo(t.x+step*sin, t.y+step*cos)
 }
 
-func (t *transformComponent) glide(x, y float64, secs float64) {
-	if isDebugInstrEnabled() {
-		spxlog.Debug("Glide: sprite=%s, x=%v, y=%v, secs=%v", t.sprite.name, x, y, secs)
-	}
-
-	x0, y0 := t.getXY()
-	from := mathf.NewVec2(x0, y0)
-	to := mathf.NewVec2(x, y)
-
-	aniCopy := coreproject.AniConfig{
-		Duration: secs,
-		From:     &from,
-		To:       &to,
-		AniType:  coreproject.AniTypeGlide,
-		IsLoop:   true,
-	}
-
-	animName := t.sprite.getStateAnimName(StateGlide)
-	t.sprite.animation().doTween(animName, &aniCopy)
-}
-
 func (t *transformComponent) glideTo(obj any, secs float64) {
 	x, y := t.sprite.g.objectPos(obj)
 	t.glide(x, y, secs)
