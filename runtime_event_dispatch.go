@@ -25,11 +25,13 @@ import (
 )
 
 type scriptEventDispatch struct {
-	mode      coroutine.BatchMode
-	matchData any
-	lifecycle func(coroutine.Thread, *eventSink) func()
-	shouldRun func() bool
-	run       func(coroutine.Thread, *eventSink)
+	// firstSliceDone runs after every handler first yields or finishes, even on cancellation.
+	firstSliceDone func()
+	mode           coroutine.BatchMode
+	matchData      any
+	lifecycle      func(coroutine.Thread, *eventSink) func()
+	shouldRun      func() bool
+	run            func(coroutine.Thread, *eventSink)
 }
 
 func (event scriptEventDispatch) task(sink eventSink) coroutine.BatchTask {
@@ -224,10 +226,14 @@ func dispatchScriptEventBatch(sinks []eventSink, event scriptEventDispatch) {
 }
 
 func dispatchMatchedScriptEventBatch(matched []eventSink, event scriptEventDispatch) {
-	if len(matched) == 0 {
-		return
-	}
-	if gco == nil {
+	// The dispatcher owns completion until an admitted task takes responsibility.
+	complete := event.firstSliceDone
+	defer func() {
+		if complete != nil {
+			complete()
+		}
+	}()
+	if len(matched) == 0 || gco == nil {
 		for i := range matched {
 			event.invoke(nil, &matched[i])
 		}
@@ -237,6 +243,15 @@ func dispatchMatchedScriptEventBatch(matched []eventSink, event scriptEventDispa
 	tasks := make([]coroutine.BatchTask, len(matched))
 	for i, sink := range matched {
 		tasks[i] = event.task(sink)
+	}
+	if event.firstSliceDone != nil {
+		// The ordered batch reaches this task only after each handler releases the
+		// script lock. Registration cleanup also publishes if the owner is stopped.
+		tasks = append(tasks, coroutine.BatchTask{
+			Owner:        matched[0].Owner,
+			OnRegistered: func(coroutine.Thread) func() { complete = nil; return event.firstSliceDone },
+			Run:          func(coroutine.Thread) {},
+		})
 	}
 	gco.StartBatch(tasks, event.mode)
 }

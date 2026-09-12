@@ -1068,6 +1068,8 @@ func TestCloneStopDuringFirstSliceStillReachesPublicationBatch(t *testing.T) {
 	if clone == nil || game.shapeMgr.findShapeIndex(clone) < 0 {
 		t.Fatal("canceled creator lost its initialized clone")
 	}
+	// Parent completion no longer waits for the clone's first slice.
+	updateRuntimeEventSchedulerUntil(t, co, clone.isCloneProxyPublicationReady)
 	if !clone.isCloneProxyPublicationBlocked() ||
 		!clone.isCloneProxyPublicationReady() {
 		t.Fatal("canceled creator stranded clone before the publication batch")

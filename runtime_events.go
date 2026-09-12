@@ -513,10 +513,15 @@ func (p *scriptEventRegistry) doWhenTouchStart(this threadObj, obj *SpriteImpl) 
 	})
 }
 
-func (p *scriptEventRegistry) doWhenCloned(this threadObj, data any) {
+func (p *scriptEventRegistry) doWhenCloned(this threadObj, data any, firstSliceDone func()) {
+	mode := coroutine.BatchWaitFirstSlice
+	if gco != nil && gco.IsInCoroutine() {
+		mode = coroutine.BatchAsync
+	}
 	p.dispatchTarget(coreevent.BucketCloned, this, scriptEventDispatch{
-		mode:      coroutine.BatchWaitFirstSlice,
-		matchData: this,
+		firstSliceDone: firstSliceDone,
+		mode:           mode,
+		matchData:      this,
 		run: func(_ coroutine.Thread, ev *eventSink) {
 			coreevent.If0(isDebugEventEnabled, func() {
 				spxlog.Debug("OnCloned: %s", nameOf(this))
