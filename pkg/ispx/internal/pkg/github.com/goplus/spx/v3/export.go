@@ -190,6 +190,7 @@ func init() {
 			"ResetRandomSeed":            reflect.ValueOf(q.ResetRandomSeed),
 			"Sched":                      reflect.ValueOf(q.Sched),
 			"SchedNow":                   reflect.ValueOf(q.SchedNow),
+			"ScratchListIndex":           reflect.ValueOf(q.ScratchListIndex),
 			"SetDebug":                   reflect.ValueOf(q.SetDebug),
 			"SetRandomSeed":              reflect.ValueOf(q.SetRandomSeed),
 			"SetRunWithoutScreenRefresh": reflect.ValueOf(q.SetRunWithoutScreenRefresh),
@@ -642,6 +643,7 @@ func init() {
 		"ResetRandomSeed":              func_ResetRandomSeed,
 		"Sched":                        func_Sched,
 		"SchedNow":                     func_SchedNow,
+		"ScratchListIndex":             func_ScratchListIndex,
 		"SetRandomSeed":                func_SetRandomSeed,
 		"SetRunWithoutScreenRefresh":   func_SetRunWithoutScreenRefresh,
 		"Snapshot":                     func_Snapshot,
@@ -839,6 +841,10 @@ func func_Sched(ctx ixgo.DirectCallContext) {
 
 func func_SchedNow(ctx ixgo.DirectCallContext) {
 	ctx.SetResult(q.SchedNow())
+}
+
+func func_ScratchListIndex(ctx ixgo.DirectCallContext) {
+	ctx.SetResult(q.ScratchListIndex(ixgo.DirectCallArg[any](ctx, 0)))
 }
 
 func func_SetRandomSeed(ctx ixgo.DirectCallContext) {

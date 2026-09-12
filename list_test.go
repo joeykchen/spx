@@ -452,3 +452,32 @@ func TestToIntAnyPreservesLargeIntegerStringPrecision(t *testing.T) {
 		})
 	}
 }
+
+func TestListInsertValidatesPositionBeforeMutation(t *testing.T) {
+	for _, index := range []Pos{Invalid, All, -100, 4, 999} {
+		t.Run(fmt.Sprint(index), func(t *testing.T) {
+			list := NewList("a", "b")
+			list.Insert(index, "x")
+			if got := list.String(); got != "ab" {
+				t.Fatalf("Insert(%d) changed list to %q", index, got)
+			}
+		})
+	}
+	for _, tt := range []struct {
+		index Pos
+		want  string
+	}{{0, "xab"}, {1, "axb"}, {2, "abx"}, {Last, "abx"}} {
+		list := NewList("a", "b")
+		list.Insert(tt.index, "x")
+		if got := list.String(); got != tt.want {
+			t.Fatalf("Insert(%d) = %q, want %q", tt.index, got, tt.want)
+		}
+	}
+	for _, index := range []Pos{0, Last, Random} {
+		list := NewList()
+		list.Insert(index, "x")
+		if got := list.String(); got != "x" {
+			t.Fatalf("empty Insert(%d) = %q", index, got)
+		}
+	}
+}
