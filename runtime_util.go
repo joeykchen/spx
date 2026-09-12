@@ -17,6 +17,7 @@
 package spx
 
 import (
+	"github.com/goplus/spx/v3/internal/scratch"
 	"math"
 	"strings"
 
@@ -189,8 +190,11 @@ func toCompareNumber(v any) (float64, bool) {
 	if v == nil {
 		return 0, false
 	}
-	if s, ok := v.(string); ok && strings.TrimSpace(s) == "" {
-		return 0, false
+	if s, ok := v.(string); ok {
+		if scratch.TrimSpace(s) == "" {
+			return 0, false
+		}
+		return scratch.ParseNumber(s)
 	}
 	return toFloat64Any(v)
 }
