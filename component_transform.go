@@ -152,7 +152,10 @@ func (t *transformComponent) glide(x, y float64, secs float64) {
 }
 
 func (t *transformComponent) glideTo(obj any, secs float64) {
-	x, y := t.sprite.g.objectPos(obj)
+	x, y, ok := t.sprite.g.resolveTargetPosition(obj)
+	if !ok {
+		return
+	}
 	t.glide(x, y, secs)
 }
 
@@ -188,7 +191,10 @@ func (t *transformComponent) stepToPos(x, y, speed float64, animation SpriteAnim
 }
 
 func (t *transformComponent) stepTo(obj any, speed float64, animation SpriteAnimationName) {
-	x, y := t.sprite.g.objectPos(obj)
+	x, y, ok := t.sprite.g.resolveTargetPosition(obj)
+	if !ok {
+		return
+	}
 	t.stepToPos(x, y, speed, animation)
 }
 
@@ -253,7 +259,10 @@ func (t *transformComponent) changeY(dy float64) {
 
 func (t *transformComponent) distanceTo(obj any) float64 {
 	x, y := t.x, t.y
-	x2, y2 := t.sprite.g.objectPos(obj)
+	x2, y2, ok := t.sprite.g.resolveTargetPosition(obj)
+	if !ok {
+		return scratchMissingTargetDistance
+	}
 	dx := x - x2
 	dy := y - y2
 	return math.Sqrt(dx*dx + dy*dy)
@@ -387,7 +396,10 @@ func (t *transformComponent) turn(delta Direction, speed float64, animation Spri
 }
 
 func (t *transformComponent) turnTo(obj any, speed float64, animation SpriteAnimationName) {
-	targetAngle := t.calculateTargetAngle(obj)
+	targetAngle, ok := t.calculateTargetAngle(obj)
+	if !ok {
+		return
+	}
 	fromAngle, toAngle := t.normalizeAngleRange(t.direction, targetAngle)
 
 	t.doTurnAnimation(fromAngle, toAngle, speed, animation, func() {
@@ -447,7 +459,11 @@ func (t *transformComponent) applyDirection(dir float64) bool {
 }
 
 func (t *transformComponent) directionTo(obj any) Direction {
-	return normalizeDirection(t.calculateTargetAngle(obj))
+	angle, ok := t.calculateTargetAngle(obj)
+	if !ok {
+		return t.direction
+	}
+	return normalizeDirection(angle)
 }
 
 func (t *transformComponent) directionToPos(x, y float64) Direction {
@@ -455,13 +471,16 @@ func (t *transformComponent) directionToPos(x, y float64) Direction {
 }
 
 // calculateTargetAngle calculates the angle to turn toward the specified object.
-func (t *transformComponent) calculateTargetAngle(obj any) float64 {
+func (t *transformComponent) calculateTargetAngle(obj any) (float64, bool) {
 	switch v := obj.(type) {
 	case Direction:
-		return v
+		return v, true
 	default:
-		x, y := t.sprite.g.objectPos(obj)
-		return t.calculateTargetAngleToPos(x, y)
+		x, y, ok := t.sprite.g.resolveTargetPosition(obj)
+		if !ok {
+			return 0, false
+		}
+		return t.calculateTargetAngleToPos(x, y), true
 	}
 }
 

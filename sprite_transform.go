@@ -360,16 +360,14 @@ func (p *SpriteImpl) doStepTo(obj any, speed float64, animation SpriteAnimationN
 	if isDebugInstrEnabled() {
 		spxlog.Debug("Goto: sprite=%s, obj=%v", p.name, obj)
 	}
-	x, y := p.g.objectPos(obj)
-	p.transform().stepToPos(x, y, speed, animation)
+	p.transform().stepTo(obj, speed, animation)
 }
 
 func (p *SpriteImpl) doGlideTo(obj Target, secs Seconds) {
 	if isDebugInstrEnabled() {
 		spxlog.Debug("Glide: obj=%v, secs=%v", obj, secs)
 	}
-	x, y := p.g.objectPos(obj)
-	p.transform().glide(x, y, secs)
+	p.transform().glideTo(obj, secs)
 }
 
 func (p *SpriteImpl) getPivot() mathf.Vec2 {
