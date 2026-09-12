@@ -86,9 +86,8 @@ func (p *SpriteImpl) Destroy() {
 	if isDebugInstrEnabled() {
 		spxlog.Debug("Destroy: %s", p.name)
 	}
-	p.teardown()
+	p.destroy()
 	p.Stop(ThisSprite)
-	p.markDestroyed()
 	p.abortIfCurrentCoroutine()
 }
 
@@ -178,6 +177,16 @@ func (p *SpriteImpl) playStateAnimationAndWait(stateName string) {
 		return
 	}
 	p.AnimateAndWait(animName)
+}
+
+// destroy releases resources without aborting the caller. Project-wide stop
+// uses it to finish every clone's cleanup before ending the calling script.
+func (p *SpriteImpl) destroy() {
+	if p.isDestroyed() {
+		return
+	}
+	p.teardown()
+	p.markDestroyed()
 }
 
 func (p *SpriteImpl) teardown() {
