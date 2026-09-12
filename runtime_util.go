@@ -17,6 +17,7 @@
 package spx
 
 import (
+	"github.com/goplus/spx/v3/internal/scratch"
 	"math"
 	"strings"
 
@@ -68,7 +69,7 @@ func FloorMod(dividend, divisor float64) float64 {
 // Contains reports whether substr is within s using Scratch's
 // case-insensitive string matching semantics.
 func Contains(s, substr string) bool {
-	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+	return strings.Contains(scratch.Lower(s), scratch.Lower(substr))
 }
 
 // Compare compares values using the same rules as Scratch's =, <, and >
@@ -90,16 +91,7 @@ func Compare(v1, v2 any) int {
 		}
 	}
 
-	s1 := strings.ToLower(toString(v1))
-	s2 := strings.ToLower(toString(v2))
-	switch {
-	case s1 < s2:
-		return -1
-	case s1 > s2:
-		return 1
-	default:
-		return 0
-	}
+	return scratch.CompareText(toString(v1), toString(v2))
 }
 
 // Equal reports whether two values match Scratch's = operator semantics.

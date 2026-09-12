@@ -103,6 +103,7 @@ func TestRuntimePackSourcePathSeparatesEngineAndOrchestration(t *testing.T) {
 		{"fs/asset/asset.go", true},
 		{"internal/base/licenseheader/licenseheader.go", false},
 		{"internal/audio/audio.go", true},
+		{"internal/scratch/value.go", true},
 		{"internal/gdengine/binding/web/ffi.go", false},
 		{"internal/scaffold/gdextension.go", true},
 		{"pkg/ispx/runner.go", false},
