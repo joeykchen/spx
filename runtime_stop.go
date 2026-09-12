@@ -61,6 +61,7 @@ func (p *scriptEventBindings) Stop(kind StopKind) {
 // and resetting the effects and playback associated with project execution.
 // Other scripts have been canceled; the caller remains alive for engine calls.
 func (p *Game) stopAllResources() {
+	p.cancelQuestions()
 	p.resetGraphicEffectsOnStopAll()
 	p.StopAllSounds()
 	p.clearSoundEffects(p.audioState.SoundObj)

@@ -46,7 +46,7 @@ func (pself *UiAsk) OnStart() {
 
 // Update handles Enter key presses.
 func (pself *UiAsk) Update() {
-	enterPressed := engine.Managers().InputMgr.GetKey(int64(gdx.KeyEnter)) || engine.Managers().InputMgr.GetKey(int64(gdx.KeyKPEnter))
+	enterPressed := askEnterPressed()
 	// Trigger only on key press (not held down)
 	if enterPressed && !pself.lastEnterState {
 		pself.handleCheck()
@@ -64,7 +64,7 @@ func (pself *UiAsk) Show(isSprite bool, question string, onCheck func(string)) {
 	}
 	engine.Managers().UiMgr.SetText(pself.input.GetId(), "")
 	engine.Managers().UiMgr.SetVisible(pself.GetId(), true)
-	pself.lastEnterState = false
+	pself.lastEnterState = askEnterPressed()
 }
 
 func NewUiAsk() *UiAsk {
@@ -73,8 +73,19 @@ func NewUiAsk() *UiAsk {
 
 // handleCheck hides the dialog before invoking the callback, if present.
 func (pself *UiAsk) handleCheck() {
-	if pself.OnCheck != nil {
-		pself.SetVisible(false)
-		pself.OnCheck(pself.input.GetText())
+	if callback := pself.OnCheck; callback != nil {
+		pself.Hide()
+		callback(pself.input.GetText())
 	}
+}
+
+// Hide releases the submitted or canceled question callback.
+func (pself *UiAsk) Hide() {
+	pself.OnCheck = nil
+	pself.SetVisible(false)
+}
+
+func askEnterPressed() bool {
+	input := &engine.Managers().InputMgr
+	return input.GetKey(int64(gdx.KeyEnter)) || input.GetKey(int64(gdx.KeyKPEnter))
 }

@@ -85,6 +85,8 @@ type Game struct {
 	lifecycleState     corestate.GameLifecycleState
 	displayState       corestate.GameDisplayState
 	dialogState        corestate.GameDialogState
+	questions          questionQueue
+	questionView       questionView
 	debugState         corestate.GameDebugState
 	gameRuntimeState   corestate.GameRuntimeState
 	pathfindingState   corestate.GamePathfindingState
@@ -194,6 +196,7 @@ func (p *Game) reset() {
 	p.shapeMgr.reset()
 
 	p.debugState.DebugPanel = nil
+	p.questions.clear(true)
 	p.dialogState.AskPanel = nil
 
 	p.Stop(AllOtherScripts)

@@ -46,9 +46,14 @@ type GameDisplayState struct {
 	StretchMode  bool
 }
 
+type AskPanel interface {
+	Show(bool, string, func(string))
+	Update()
+	Hide()
+}
+
 type GameDialogState struct {
-	AskPanel  *ui.UiAsk
-	AnswerVal string
+	AskPanel AskPanel
 }
 
 type GameDebugState struct {

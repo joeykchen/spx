@@ -31,10 +31,7 @@ func (p *SpriteImpl) Ask(msg any) {
 		spxlog.Debug("Ask: sprite=%s, msg=%v", p.name, msg)
 	}
 	msgStr := dialogText(msg)
-	p.sayOrThink(msgStr, ui.StyleSay)
-	p.g.ask(true, msgStr, func(answer string) {
-		p.doStopText()
-	})
+	p.g.ask(p, msgStr)
 }
 
 func (p *SpriteImpl) Say__0(msg any) {
