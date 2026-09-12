@@ -65,8 +65,8 @@ func TestListSetOutOfBoundsIsNoOp(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			list := NewList(1, 2, 3)
 			list.Set(tt.index, 99)
-			if got := list.String(); got != "123" {
-				t.Fatalf("List.Set(%d, 99) changed list to %q, want %q", tt.index, got, "123")
+			if got := list.String(); got != "1 2 3" {
+				t.Fatalf("List.Set(%d, 99) changed list to %q, want %q", tt.index, got, "1 2 3")
 			}
 		})
 	}
@@ -81,8 +81,8 @@ func TestListSetOutOfBoundsIsNoOp(t *testing.T) {
 func TestListSetLast(t *testing.T) {
 	list := NewList(1, 2, 3)
 	list.Set(Last, 9)
-	if got := list.String(); got != "129" {
-		t.Fatalf("List.Set(Last, 9) produced %q, want %q", got, "129")
+	if got := list.String(); got != "1 2 9" {
+		t.Fatalf("List.Set(Last, 9) produced %q, want %q", got, "1 2 9")
 	}
 }
 

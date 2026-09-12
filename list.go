@@ -92,19 +92,6 @@ func (p *List) Len() int {
 	return len(p.data)
 }
 
-func (p *List) String() string {
-	sep := ""
-	items := make([]string, len(p.data))
-	for i, item := range p.data {
-		val := toString(item)
-		if len(val) != 1 {
-			sep = " "
-		}
-		items[i] = fmt.Sprint(val)
-	}
-	return strings.Join(items, sep)
-}
-
 // Contains returns true if the list contains the element v.
 func (p *List) Contains(v obj) bool {
 	for _, item := range p.data {
