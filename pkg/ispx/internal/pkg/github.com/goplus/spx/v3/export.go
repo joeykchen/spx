@@ -70,6 +70,7 @@ func init() {
 			"github.com/goplus/spx/v3/internal/input":           "input",
 			"github.com/goplus/spx/v3/internal/input/keycode":   "keycode",
 			"github.com/goplus/spx/v3/internal/log":             "log",
+			"github.com/goplus/spx/v3/internal/scratch":         "scratch",
 			"github.com/goplus/spx/v3/internal/tilemap":         "tilemap",
 			"github.com/goplus/spx/v3/internal/time":            "time",
 			"github.com/goplus/spx/v3/internal/tools":           "tools",

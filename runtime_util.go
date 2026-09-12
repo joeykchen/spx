@@ -17,6 +17,7 @@
 package spx
 
 import (
+	"github.com/goplus/spx/v3/internal/scratch"
 	"math"
 	"strings"
 
@@ -45,12 +46,10 @@ func Rand__1(from, to float64) float64 {
 	return randomFloat64()*(to-from) + from
 }
 
-// Iround returns an integer value, while math.Round returns a float value.
+// Iround rounds to the nearest integer, with ties toward positive infinity,
+// as in Scratch's round operator.
 func Iround(v float64) int {
-	if v >= 0 {
-		return int(v + 0.5)
-	}
-	return int(v - 0.5)
+	return int(scratch.Round(v))
 }
 
 // FloorMod returns the remainder of dividend divided by divisor using
