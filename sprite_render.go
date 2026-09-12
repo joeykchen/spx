@@ -17,8 +17,8 @@
 package spx
 
 import (
+	"github.com/goplus/spx/v3/internal/scratch"
 	"math"
-	"strconv"
 
 	"github.com/goplus/spx/v3/internal/engine"
 
@@ -59,18 +59,23 @@ func (p *SpriteImpl) ResolveCostumeIndex(costume string) int {
 		return idx
 	}
 
-	idx, err := strconv.Atoi(costume)
-	if err != nil {
-		return -1
+	var index float64
+	switch costume {
+	case "next costume":
+		index = float64(p.costumeIndex) + 1
+	case "previous costume":
+		index = float64(p.costumeIndex) - 1
+	default:
+		if scratch.TrimSpace(costume) == "" {
+			return Invalid
+		}
+		number, ok := scratch.ParseNumber(costume)
+		if !ok {
+			return Invalid
+		}
+		index = number - 1
 	}
-	if len(p.costumes) == 0 {
-		return idx - 1
-	}
-	if idx >= 0 && idx <= len(p.costumes) {
-		return idx - 1
-	}
-	idx = (idx - 1) % len(p.costumes)
-	return idx
+	return costumePosition(index, len(p.costumes))
 }
 
 func (p *SpriteImpl) SetCostume__0(costume SpriteCostumeName) {

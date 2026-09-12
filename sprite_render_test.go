@@ -80,7 +80,7 @@ func TestResolveCostumeIndex(t *testing.T) {
 		want    int
 	}{
 		{name: "name", costume: "run", want: 1},
-		{name: "zero", costume: "0", want: -1},
+		{name: "zero", costume: "0", want: 1},
 		{name: "in range", costume: "2", want: 1},
 		{name: "wrap", costume: "3", want: 0},
 		{name: "wrap to zero", costume: "4", want: 1},
