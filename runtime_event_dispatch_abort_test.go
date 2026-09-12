@@ -88,10 +88,13 @@ func TestAsyncDispatchAbortAfterCallbackStartsDoesNotRunRejectedLifecycle(t *tes
 	if ran.Load() {
 		t.Fatal("rejected nested handler ran after abort")
 	}
-	handler.mu.Lock()
-	active := handler.active
-	handler.mu.Unlock()
-	if active != nil {
-		t.Fatalf("rejected lifecycle left active thread %v", active)
+	co.StartBatch([]coroutine.BatchTask{{
+		Owner:        handler,
+		OnRegistered: handler.start,
+		Run:          func(coroutine.Thread) { ran.Store(true) },
+	}}, coroutine.BatchAsync)
+	co.Update()
+	if !ran.Load() {
+		t.Fatal("handler could not run after the abort barrier recovered")
 	}
 }

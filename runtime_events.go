@@ -64,13 +64,6 @@ type messageReceiverExecution struct {
 	receiver *messageEventHandler
 }
 
-// messageEventHandler tracks one broadcast script's active thread.
-type messageEventHandler struct {
-	mu     sync.Mutex
-	active coroutine.Thread
-	run    func(string, any)
-}
-
 type startEventDispatcher struct{}
 
 // Click Dispatch
@@ -94,7 +87,7 @@ func (p *scriptEventBindings) OnStart(onStart func()) {
 
 func (p *scriptEventBindings) OnClick(onClick func()) {
 	pthis := p.pthis
-	p.scriptEventRegistry.manager.AddClick(coreevent.NewSink(pthis, onClick, coreevent.MatchOwner(pthis)))
+	p.scriptEventRegistry.manager.AddClick(coreevent.NewSink(pthis, newScriptEventHandler(onClick, coroutine.RestartExisting), coreevent.MatchOwner(pthis)))
 }
 
 func (p *scriptEventBindings) OnAnyKey(onKey func(key Key)) {
@@ -154,16 +147,15 @@ func (p *scriptEventBindings) OnMsg__1(msg MsgName, onMsg func()) {
 }
 
 func (p *scriptEventBindings) OnBackdrop__0(onBackdrop func(name BackdropName)) {
-	p.scriptEventRegistry.manager.AddBackdropChanged(coreevent.NewSink(p.pthis, onBackdrop))
+	p.scriptEventRegistry.manager.AddBackdropChanged(coreevent.NewSink(p.pthis, newScriptEventHandler(onBackdrop, coroutine.RestartExisting)))
 }
 
 func (p *scriptEventBindings) OnBackdrop__1(name BackdropName, onBackdrop func()) {
+	handler := coreevent.TapVoid1(onBackdrop, coreevent.If1(isDebugEventEnabled, func(name BackdropName) {
+		spxlog.Debug("OnBackdrop: %s, %s", name, nameOf(p.pthis))
+	}))
 	p.scriptEventRegistry.manager.AddBackdropChanged(coreevent.NewSink(
-		p.pthis,
-		coreevent.TapVoid1(onBackdrop, coreevent.If1(isDebugEventEnabled, func(name BackdropName) {
-			spxlog.Debug("OnBackdrop: %s, %s", name, nameOf(p.pthis))
-		})),
-		coreevent.MatchValue(name),
+		p.pthis, newScriptEventHandler(handler, coroutine.RestartExisting), coreevent.MatchValue(name),
 	))
 }
 
@@ -233,24 +225,6 @@ func (p *Game) BroadcastAndWait__1(msg MsgName, data any) {
 	p.doBroadcast(msg, data, true)
 }
 
-func (p *messageEventHandler) start(thread coroutine.Thread) func() {
-	p.mu.Lock()
-	previous := p.active
-	p.active = thread
-	p.mu.Unlock()
-
-	if previous != nil && previous != thread {
-		gco.Stop(previous)
-	}
-	return func() {
-		p.mu.Lock()
-		if p.active == thread {
-			p.active = nil
-		}
-		p.mu.Unlock()
-	}
-}
-
 func (p *scriptEventBindings) init(registry *scriptEventRegistry, this threadObj) {
 	p.scriptEventRegistry = registry
 	p.pthis = this
@@ -279,7 +253,7 @@ func (p *scriptEventBindings) registerKeyHandler(keys []Key, handler func(Key)) 
 		return
 	}
 	keys = slices.Clone(keys)
-	sink := coreevent.NewSink(p.pthis, handler)
+	sink := coreevent.NewSink(p.pthis, newScriptEventHandler(handler, coroutine.IgnoreWhileRunning))
 	if slices.Contains(keys, KeyAny) {
 		p.scriptEventRegistry.manager.AddAnyKeyPressed(sink)
 		return
@@ -291,7 +265,7 @@ func (p *scriptEventBindings) registerKeyHandler(keys []Key, handler func(Key)) 
 func (p *scriptEventBindings) registerMessageHandler(handler func(string, any), cond ...func(any) bool) {
 	p.scriptEventRegistry.manager.AddIReceive(coreevent.NewSink(
 		p.pthis,
-		&messageEventHandler{run: handler},
+		newScriptEventHandler(handler, coroutine.RestartExisting),
 		cond...,
 	))
 }
@@ -472,7 +446,7 @@ func (p *scriptEventRegistry) doWhenKeyPressed(key Key) {
 		mode:      coroutine.BatchAsync,
 		matchData: key,
 		run: func(_ coroutine.Thread, ev *eventSink) {
-			ev.Handler.(func(Key))(key)
+			ev.Handler.(*scriptEventHandler[func(Key)]).run(key)
 		},
 	})
 }
@@ -495,7 +469,7 @@ func (p *scriptEventRegistry) doWhenClick(this threadObj) {
 			coreevent.If0(isDebugEventEnabled, func() {
 				spxlog.Debug("OnClick: %s", nameOf(this))
 			})()
-			ev.Handler.(func())()
+			ev.Handler.(*scriptEventHandler[func()]).run()
 		},
 	})
 }
@@ -531,9 +505,6 @@ func (p *scriptEventRegistry) doWhenIReceive(msg string, data any, wait bool) {
 	p.dispatchGlobal(coreevent.BucketIReceive, scriptEventDispatch{
 		mode:      eventBatchMode(wait),
 		matchData: msg,
-		lifecycle: func(thread coroutine.Thread, ev *eventSink) func() {
-			return ev.Handler.(*messageEventHandler).start(thread)
-		},
 		run: func(thread coroutine.Thread, ev *eventSink) {
 			receiver := ev.Handler.(*messageEventHandler)
 			if thread != nil {
@@ -591,7 +562,7 @@ func (p *scriptEventRegistry) doWhenBackdropChanged(name BackdropName, wait bool
 		mode:      eventBatchMode(wait),
 		matchData: name,
 		run: func(_ coroutine.Thread, ev *eventSink) {
-			ev.Handler.(func(BackdropName))(name)
+			ev.Handler.(*scriptEventHandler[func(BackdropName)]).run(name)
 		},
 	})
 }

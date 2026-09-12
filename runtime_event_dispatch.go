@@ -37,6 +37,9 @@ func (event scriptEventDispatch) task(sink eventSink) coroutine.BatchTask {
 		Owner: sink.Owner,
 		Run:   func(thread coroutine.Thread) { event.invoke(thread, &sink) },
 	}
+	if handler, ok := sink.Handler.(interface{ start(coroutine.Thread) func() }); ok {
+		task.OnRegistered = handler.start
+	}
 	if event.lifecycle != nil {
 		task.OnRegistered = func(thread coroutine.Thread) func() { return event.lifecycle(thread, &sink) }
 	}
