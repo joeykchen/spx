@@ -156,10 +156,11 @@ func settableSpriteField(field reflect.Value) reflect.Value {
 }
 
 func dispatchCloneLifecycle(dest *SpriteImpl, data any) {
-	defer dest.finishCloneInitialization()
-	if dest.spriteState.HasOnCloned {
-		dest.doWhenCloned(dest, data)
+	if !dest.spriteState.HasOnCloned {
+		dest.finishCloneInitialization()
+		return
 	}
+	dest.doWhenCloned(dest, data, dest.finishCloneInitialization)
 }
 
 func applySpriteProps(dest *SpriteImpl, v coreproject.StageShape) {

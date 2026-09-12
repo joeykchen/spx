@@ -322,8 +322,8 @@ func TestManagerVolumeAndEffects(t *testing.T) {
 	if !almostEqual(backend.pitch, 2) {
 		t.Fatalf("SetPitch backend = %v, want 2", backend.pitch)
 	}
-	if got := backend.volumes[len(backend.volumes)-1]; got != 0.01 {
-		t.Fatalf("SetVolume backend = %v, want 0.01", got)
+	if got := backend.volumes[len(backend.volumes)-1]; got != 0 {
+		t.Fatalf("SetVolume backend = %v, want 0", got)
 	}
 }
 
@@ -526,4 +526,101 @@ func assertManagerNoTracking(t *testing.T, mgr *Manager) {
 
 func almostEqual(got, want float64) bool {
 	return math.Abs(got-want) < 1e-9
+}
+
+func TestManagerStopAllBeforeInitialization(t *testing.T) {
+	var mgr Manager
+	mgr.StopAll()
+	mgr.StopAll()
+	backend := &fakeBackend{}
+	mgr.Init(backend)
+	id := mgr.Play(13, "sound.wav", false, false, 0, 0, 0)
+	if !backend.IsPlaying(id) {
+		t.Fatal("initialization after stop did not restore playback")
+	}
+	mgr.StopAll()
+	if backend.IsPlaying(id) {
+		t.Fatal("initialized playback survived stop")
+	}
+}
+
+func TestManagerCanReplayAfterRepeatedStopAll(t *testing.T) {
+	backend := &fakeBackend{}
+	var mgr Manager
+	mgr.Init(backend)
+	for round := 1; round <= 3; round++ {
+		id := mgr.Play(13, "sound.wav", false, false, 0, 0, 0)
+		mgr.ReleaseSound(13)
+		mgr.StopAll()
+		mgr.StopAll()
+		if backend.IsPlaying(id) || len(backend.destroys) != round {
+			t.Fatalf("round %d: playing=%v destroyed=%v", round, backend.IsPlaying(id), backend.destroys)
+		}
+	}
+}
+
+func TestScratchAudioControlRanges(t *testing.T) {
+	backend := &fakeBackend{}
+	var mgr Manager
+	mgr.Init(backend)
+	for _, tt := range []struct {
+		name        string
+		set         func(float64)
+		get         func() float64
+		input, want float64
+	}{
+		{"mute", func(v float64) { mgr.SetVolume(1, v) }, func() float64 { return mgr.GetVolume(1) }, 0, 0},
+		{"negative volume", func(v float64) { mgr.SetVolume(1, v) }, func() float64 { return mgr.GetVolume(1) }, -30, 0},
+		{"high volume", func(v float64) { mgr.SetVolume(1, v) }, func() float64 { return mgr.GetVolume(1) }, 150, 100},
+		{"high pan", func(v float64) { mgr.SetPan(1, v) }, func() float64 { return mgr.GetPan(1) }, 150, 100},
+		{"low pan", func(v float64) { mgr.SetPan(1, v) }, func() float64 { return mgr.GetPan(1) }, -150, -100},
+		{"high pitch", func(v float64) { mgr.SetPitch(1, v) }, func() float64 { return mgr.GetPitch(1) }, 480, 360},
+		{"low pitch", func(v float64) { mgr.SetPitch(1, v) }, func() float64 { return mgr.GetPitch(1) }, -480, -360},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.set(tt.input)
+			if got := tt.get(); !almostEqual(got, tt.want) {
+				t.Errorf("got %g, want %g", got, tt.want)
+			}
+		})
+	}
+	mgr.SetVolume(1, 90)
+	mgr.ChangeVolume(1, 30)
+	mgr.ChangeVolume(1, -10)
+	if got := mgr.GetVolume(1); got != 90 {
+		t.Errorf("volume accumulation=%g", got)
+	}
+	mgr.SetPan(1, 90)
+	mgr.ChangePan(1, 30)
+	mgr.ChangePan(1, -10)
+	if got := mgr.GetPan(1); got != 90 {
+		t.Errorf("pan accumulation=%g", got)
+	}
+	mgr.SetPitch(1, 350)
+	mgr.ChangePitch(1, 30)
+	mgr.ChangePitch(1, -10)
+	if got := mgr.GetPitch(1); !almostEqual(got, 350) {
+		t.Errorf("pitch accumulation=%g", got)
+	}
+}
+
+func TestScratchAudioNaNControls(t *testing.T) {
+	backend := &fakeBackend{}
+	var mgr Manager
+	mgr.Init(backend)
+	mgr.SetVolume(1, 50)
+	mgr.ChangeVolume(1, math.NaN())
+	mgr.SetPan(1, 25)
+	mgr.ChangePan(1, math.NaN())
+	mgr.SetPitch(1, 120)
+	mgr.ChangePitch(1, math.NaN())
+	if mgr.GetVolume(1) != 50 || mgr.GetPan(1) != 25 || mgr.GetPitch(1) != 120 {
+		t.Fatal("NaN deltas changed sound state")
+	}
+	mgr.SetVolume(1, math.NaN())
+	mgr.SetPan(1, math.NaN())
+	mgr.SetPitch(1, math.NaN())
+	if mgr.GetVolume(1) != 0 || mgr.GetPan(1) != 0 || mgr.GetPitch(1) != 0 {
+		t.Fatal("NaN set values did not become zero")
+	}
 }

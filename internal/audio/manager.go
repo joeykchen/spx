@@ -17,12 +17,8 @@
 package audio
 
 import (
-	"math"
-
 	"github.com/goplus/spx/v3/internal/engine"
 )
-
-const scratchPitchStepsPerOctave = 120
 
 type Backend interface {
 	CreateAudio() engine.Object
@@ -67,6 +63,18 @@ func (m *Manager) Init(backend Backend) {
 
 func (m *Manager) AllocSound() engine.Object {
 	return m.backend.CreateAudio()
+}
+
+// CloneSoundEffects allocates independent effects without copying volume or
+// playback. An unallocated source stays unallocated.
+func (m *Manager) CloneSoundEffects(source engine.Object) engine.Object {
+	if source == 0 {
+		return 0
+	}
+	target := m.AllocSound()
+	m.backend.SetPan(target, m.backend.GetPan(source))
+	m.backend.SetPitch(target, m.backend.GetPitch(source))
+	return target
 }
 
 func (m *Manager) ReleaseSound(soundObj engine.Object) {
@@ -180,14 +188,16 @@ func (m *Manager) Play(
 }
 
 func (m *Manager) StopAll() {
-	m.path2id = make(map[string]int64)
-	m.obj2ids = make(map[engine.Object][]int64)
-	m.playbacks = make(map[int64]playbackInfo)
-	m.backend.StopAll()
+	clear(m.path2id)
+	clear(m.obj2ids)
+	clear(m.playbacks)
+	if m.backend != nil {
+		m.backend.StopAll()
+	}
 	for soundObj := range m.pendingDestroy {
 		m.backend.DestroyAudio(soundObj)
 	}
-	m.pendingDestroy = make(map[engine.Object]struct{})
+	clear(m.pendingDestroy)
 }
 
 func (m *Manager) Update() {
@@ -203,46 +213,6 @@ func (m *Manager) Update() {
 			m.backend.DestroyAudio(soundObj)
 		}
 	}
-}
-
-func (m *Manager) GetPan(soundObj engine.Object) float64 {
-	return m.backend.GetPan(soundObj) * 100
-}
-
-func (m *Manager) SetPan(soundObj engine.Object, value float64) {
-	m.backend.SetPan(soundObj, value/100)
-}
-
-func (m *Manager) ChangePan(soundObj engine.Object, delta float64) {
-	m.SetPan(soundObj, m.GetPan(soundObj)+delta)
-}
-
-func (m *Manager) GetPitch(soundObj engine.Object) float64 {
-	return pitchScaleToScratchEffect(m.backend.GetPitch(soundObj))
-}
-
-func (m *Manager) SetPitch(soundObj engine.Object, value float64) {
-	m.backend.SetPitch(soundObj, scratchPitchEffectToScale(value))
-}
-
-func (m *Manager) ChangePitch(soundObj engine.Object, delta float64) {
-	m.SetPitch(soundObj, m.GetPitch(soundObj)+delta)
-}
-
-func (m *Manager) GetVolume(soundObj engine.Object) float64 {
-	return m.backend.GetVolume(soundObj) * 100
-}
-
-func (m *Manager) SetVolume(soundObj engine.Object, value float64) {
-	val := value / 100
-	if val <= 0 {
-		val = 0.01
-	}
-	m.backend.SetVolume(soundObj, val)
-}
-
-func (m *Manager) ChangeVolume(soundObj engine.Object, delta float64) {
-	m.SetVolume(soundObj, m.GetVolume(soundObj)+delta)
 }
 
 func (m *Manager) pruneDeadID(path string) int64 {
@@ -327,15 +297,4 @@ func (m *Manager) preparePlaybacksForRelease(soundObj engine.Object) {
 		}
 		m.removeID(id)
 	}
-}
-
-func scratchPitchEffectToScale(value float64) float64 {
-	return math.Pow(2, value/scratchPitchStepsPerOctave)
-}
-
-func pitchScaleToScratchEffect(scale float64) float64 {
-	if scale <= 0 {
-		return 0
-	}
-	return scratchPitchStepsPerOctave * math.Log2(scale)
 }

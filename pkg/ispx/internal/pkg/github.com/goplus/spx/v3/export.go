@@ -44,6 +44,8 @@ func init() {
 		Name: "spx",
 		Path: "github.com/goplus/spx/v3",
 		Deps: map[string]string{
+			"cmp":                               "cmp",
+			"context":                           "context",
 			"errors":                            "errors",
 			"flag":                              "flag",
 			"fmt":                               "fmt",
@@ -70,28 +72,30 @@ func init() {
 			"github.com/goplus/spx/v3/internal/input":           "input",
 			"github.com/goplus/spx/v3/internal/input/keycode":   "keycode",
 			"github.com/goplus/spx/v3/internal/log":             "log",
+			"github.com/goplus/spx/v3/internal/scratch":         "scratch",
 			"github.com/goplus/spx/v3/internal/tilemap":         "tilemap",
 			"github.com/goplus/spx/v3/internal/time":            "time",
 			"github.com/goplus/spx/v3/internal/tools":           "tools",
 			"github.com/goplus/spx/v3/internal/ui":              "ui",
 			"github.com/goplus/spx/v3/pkg/spx":                  "spx",
 			"github.com/goplus/spx/v3/pkg/spx/pkg/engine":       "engine",
-			"maps":        "maps",
-			"math":        "math",
-			"math/rand":   "rand",
-			"os":          "os",
-			"path":        "path",
-			"reflect":     "reflect",
-			"runtime":     "runtime",
-			"slices":      "slices",
-			"sort":        "sort",
-			"strconv":     "strconv",
-			"strings":     "strings",
-			"sync":        "sync",
-			"sync/atomic": "atomic",
-			"syscall":     "syscall",
-			"time":        "time",
-			"unsafe":      "unsafe",
+			"maps":         "maps",
+			"math":         "math",
+			"math/rand":    "rand",
+			"os":           "os",
+			"path":         "path",
+			"reflect":      "reflect",
+			"runtime":      "runtime",
+			"slices":       "slices",
+			"sort":         "sort",
+			"strconv":      "strconv",
+			"strings":      "strings",
+			"sync":         "sync",
+			"sync/atomic":  "atomic",
+			"syscall":      "syscall",
+			"time":         "time",
+			"unicode/utf8": "utf8",
+			"unsafe":       "unsafe",
 		},
 		Interfaces: map[string]reflect.Type{
 			"Camera":      reflect.TypeOf((*q.Camera)(nil)).Elem(),
@@ -189,6 +193,7 @@ func init() {
 			"ResetRandomSeed":            reflect.ValueOf(q.ResetRandomSeed),
 			"Sched":                      reflect.ValueOf(q.Sched),
 			"SchedNow":                   reflect.ValueOf(q.SchedNow),
+			"ScratchListIndex":           reflect.ValueOf(q.ScratchListIndex),
 			"SetDebug":                   reflect.ValueOf(q.SetDebug),
 			"SetRandomSeed":              reflect.ValueOf(q.SetRandomSeed),
 			"SetRunWithoutScreenRefresh": reflect.ValueOf(q.SetRunWithoutScreenRefresh),
@@ -641,6 +646,7 @@ func init() {
 		"ResetRandomSeed":              func_ResetRandomSeed,
 		"Sched":                        func_Sched,
 		"SchedNow":                     func_SchedNow,
+		"ScratchListIndex":             func_ScratchListIndex,
 		"SetRandomSeed":                func_SetRandomSeed,
 		"SetRunWithoutScreenRefresh":   func_SetRunWithoutScreenRefresh,
 		"Snapshot":                     func_Snapshot,
@@ -838,6 +844,10 @@ func func_Sched(ctx ixgo.DirectCallContext) {
 
 func func_SchedNow(ctx ixgo.DirectCallContext) {
 	ctx.SetResult(q.SchedNow())
+}
+
+func func_ScratchListIndex(ctx ixgo.DirectCallContext) {
+	ctx.SetResult(q.ScratchListIndex(ixgo.DirectCallArg[any](ctx, 0)))
 }
 
 func func_SetRandomSeed(ctx ixgo.DirectCallContext) {

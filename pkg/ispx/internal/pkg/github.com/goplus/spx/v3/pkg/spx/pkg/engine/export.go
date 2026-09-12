@@ -113,6 +113,8 @@ func init() {
 			"InitUINodeInstance":          reflect.ValueOf(q.InitUINodeInstance),
 			"InternalUpdateEngine":        reflect.ValueOf(q.InternalUpdateEngine),
 			"NewEvent0":                   reflect.ValueOf(q.NewEvent0),
+			"NormalizeAngleRange":         reflect.ValueOf(q.NormalizeAngleRange),
+			"NormalizeDegrees":            reflect.ValueOf(q.NormalizeDegrees),
 			"PrintStack":                  reflect.ValueOf(q.PrintStack),
 			"RadToDeg":                    reflect.ValueOf(q.RadToDeg),
 			"SetRuntimeBridge":            reflect.ValueOf(q.SetRuntimeBridge),

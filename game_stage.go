@@ -24,9 +24,7 @@ import (
 	"github.com/goplus/spbase/mathf"
 	coreproject "github.com/goplus/spx/v3/internal/core/project"
 	"github.com/goplus/spx/v3/internal/engine"
-	spxlog "github.com/goplus/spx/v3/internal/log"
 	itime "github.com/goplus/spx/v3/internal/time"
-	"github.com/goplus/spx/v3/internal/ui"
 	spxapi "github.com/goplus/spx/v3/pkg/spx"
 )
 
@@ -186,11 +184,11 @@ func (p *Game) Dayssince2000() float64 {
 // -----------------------------------------------------------------------------
 func (p *Game) Ask(msg any) {
 	msgStr := dialogText(msg)
-	p.ask(false, msgStr, func(answer string) {})
+	p.ask(nil, msgStr)
 }
 
 func (p *Game) Answer() string {
-	return p.dialogState.AnswerVal
+	return p.questions.answerText()
 }
 
 // -----------------------------------------------------------------------------
@@ -250,26 +248,6 @@ func (p *Game) FindPath__2(xFrom, yFrom, xTo, yTo float64, withDebug, withJump b
 
 func (p *Game) getMousePos() (x, y float64) {
 	return p.MouseX(), p.MouseY()
-}
-
-func (p *Game) ask(isSprite bool, question string, callback func(string)) {
-	if p.dialogState.AskPanel == nil {
-		p.dialogState.AskPanel = ui.NewUiAsk()
-		p.addShape(p.dialogState.AskPanel)
-	}
-	hasAnswer := false
-	p.dialogState.AskPanel.Show(isSprite, question, func(msg string) {
-		p.dialogState.AnswerVal = msg
-		callback(msg)
-		hasAnswer = true
-	})
-	for {
-		if hasAnswer {
-			break
-		}
-		p.dialogState.AskPanel.Update()
-		engine.WaitNextFrame()
-	}
 }
 
 func (p *Game) propertyRootValue() reflect.Value {
@@ -341,31 +319,6 @@ func (p *Game) touchingSpriteBy(dst *SpriteImpl, name string) *SpriteImpl {
 		return nil
 	}
 	return p.findTouchingSpriteOptimized(dst, name)
-}
-
-func (p *Game) objectPos(obj Target) (float64, float64) {
-	switch v := obj.(type) {
-	case SpriteName:
-		if sp := p.shapeMgr.findSprite(v); sp != nil {
-			return sp.getXY()
-		}
-		spxlog.Error("objectPos: sprite not found - %s", v)
-		return 0, 0
-	case specialObj:
-		if v == Mouse {
-			return p.getMousePos()
-		}
-	case Pos:
-		if v == Random {
-			worldW, worldH := p.worldSize()
-			mx, my := randomIntn(worldW), randomIntn(worldH)
-			return float64(mx - (worldW >> 1)), float64((worldH >> 1) - my)
-		}
-	case Sprite:
-		return spriteOf(v).getXY()
-	}
-	spxlog.Error("objectPos: unexpected input: %T", obj)
-	return 0, 0
 }
 
 // -----------------------------------------------------------------------------

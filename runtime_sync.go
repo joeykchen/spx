@@ -52,6 +52,7 @@ func (p *Game) dispatchStartEventIfNeeded() {
 // updateSpriteProxies activates pending shapes, batches dirty sprite proxy changes,
 // processes pending destroys, flushes the batch to the engine, and updates camera state.
 func (p *Game) updateSpriteProxies() {
+	p.updateQuestions()
 	p.camera.onUpdate()
 	activeShapes := p.shapeMgr.getTempShapes()
 	p.shapeMgr.flushActivate(activeShapes)
@@ -60,6 +61,7 @@ func (p *Game) updateSpriteProxies() {
 
 // syncPostCoroutineVisuals flushes visual changes without advancing frame logic.
 func (p *Game) syncPostCoroutineVisuals() {
+	p.syncQuestions()
 	p.camera.onUpdate()
 	p.flushSpriteProxyChanges(p.shapeMgr.getTempShapes())
 }

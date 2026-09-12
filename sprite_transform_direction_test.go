@@ -72,3 +72,20 @@ func TestSpriteTurnToXYposFacesCoordinateTarget(t *testing.T) {
 		t.Fatalf("Heading() = %v, want -135", got)
 	}
 }
+
+func TestSpriteHeadingMultipleTurnsAndNonFinite(t *testing.T) {
+	sprite := newTestTransformSprite(0, 0)
+	for _, tt := range []struct{ direction, want float64 }{{1080, 0}, {-1080, 0}, {1081, 1}, {-1081, -1}, {900, 180}, {-900, 180}, {720.25, 0.25}} {
+		sprite.SetHeading(tt.direction)
+		if got := sprite.Heading(); got != tt.want {
+			t.Errorf("heading(%g)=%g, want %g", tt.direction, got, tt.want)
+		}
+	}
+	sprite.SetHeading(42)
+	for _, bad := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		sprite.SetHeading(bad)
+		if sprite.Heading() != 42 {
+			t.Errorf("invalid heading %g changed direction", bad)
+		}
+	}
+}

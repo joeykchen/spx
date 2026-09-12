@@ -31,6 +31,7 @@ type SpriteImpl struct {
 	scriptEventBindings
 
 	sprite      Sprite
+	original    *SpriteImpl
 	spriteState corestate.SpriteRuntimeState
 	// proxyPublication points to fresh clone-local state. The pointer itself
 	// remains stable after clone construction so reflective cloning never copies
@@ -62,6 +63,7 @@ func (p *SpriteImpl) InitFrom(src *SpriteImpl) {
 	p.greffUniforms = maps.Clone(src.greffUniforms)
 
 	p.spriteState.IsVisible = src.spriteState.IsVisible
+	p.original = src.originalSprite()
 	p.spriteState.Cloned = true
 	p.spriteState.IsDying = false
 	p.spriteState.IsAwakened = false
@@ -86,9 +88,8 @@ func (p *SpriteImpl) Destroy() {
 	if isDebugInstrEnabled() {
 		spxlog.Debug("Destroy: %s", p.name)
 	}
-	p.teardown()
+	p.destroy()
 	p.Stop(ThisSprite)
-	p.markDestroyed()
 	p.abortIfCurrentCoroutine()
 }
 
@@ -180,6 +181,16 @@ func (p *SpriteImpl) playStateAnimationAndWait(stateName string) {
 	p.AnimateAndWait(animName)
 }
 
+// destroy releases resources without aborting the caller. Project-wide stop
+// uses it to finish every clone's cleanup before ending the calling script.
+func (p *SpriteImpl) destroy() {
+	if p.isDestroyed() {
+		return
+	}
+	p.teardown()
+	p.markDestroyed()
+}
+
 func (p *SpriteImpl) teardown() {
 	if bubble := p.components.bubble; bubble != nil {
 		bubble.stopAll()
@@ -220,4 +231,13 @@ func spriteOf(sprite Sprite) *SpriteImpl {
 		}
 	}
 	return nil
+}
+
+// originalSprite returns the original instance, including for clones of clones.
+// A configured stage instance starts its own family even if built from a template.
+func (p *SpriteImpl) originalSprite() *SpriteImpl {
+	if p.IsCloned() && p.original != nil {
+		return p.original
+	}
+	return p
 }

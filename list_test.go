@@ -65,8 +65,8 @@ func TestListSetOutOfBoundsIsNoOp(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			list := NewList(1, 2, 3)
 			list.Set(tt.index, 99)
-			if got := list.String(); got != "123" {
-				t.Fatalf("List.Set(%d, 99) changed list to %q, want %q", tt.index, got, "123")
+			if got := list.String(); got != "1 2 3" {
+				t.Fatalf("List.Set(%d, 99) changed list to %q, want %q", tt.index, got, "1 2 3")
 			}
 		})
 	}
@@ -81,8 +81,8 @@ func TestListSetOutOfBoundsIsNoOp(t *testing.T) {
 func TestListSetLast(t *testing.T) {
 	list := NewList(1, 2, 3)
 	list.Set(Last, 9)
-	if got := list.String(); got != "129" {
-		t.Fatalf("List.Set(Last, 9) produced %q, want %q", got, "129")
+	if got := list.String(); got != "1 2 9" {
+		t.Fatalf("List.Set(Last, 9) produced %q, want %q", got, "1 2 9")
 	}
 }
 
@@ -450,5 +450,34 @@ func TestToIntAnyPreservesLargeIntegerStringPrecision(t *testing.T) {
 				t.Fatalf("toIntAny(%q) = %d, want %d", tt.input, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestListInsertValidatesPositionBeforeMutation(t *testing.T) {
+	for _, index := range []Pos{Invalid, All, -100, 4, 999} {
+		t.Run(fmt.Sprint(index), func(t *testing.T) {
+			list := NewList("a", "b")
+			list.Insert(index, "x")
+			if got := list.String(); got != "ab" {
+				t.Fatalf("Insert(%d) changed list to %q", index, got)
+			}
+		})
+	}
+	for _, tt := range []struct {
+		index Pos
+		want  string
+	}{{0, "xab"}, {1, "axb"}, {2, "abx"}, {Last, "abx"}} {
+		list := NewList("a", "b")
+		list.Insert(tt.index, "x")
+		if got := list.String(); got != tt.want {
+			t.Fatalf("Insert(%d) = %q, want %q", tt.index, got, tt.want)
+		}
+	}
+	for _, index := range []Pos{0, Last, Random} {
+		list := NewList()
+		list.Insert(index, "x")
+		if got := list.String(); got != "x" {
+			t.Fatalf("empty Insert(%d) = %q", index, got)
+		}
 	}
 }

@@ -18,6 +18,8 @@ package spx
 
 import (
 	"fmt"
+	"github.com/goplus/spx/v3/internal/scratch"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -92,27 +94,9 @@ func (p *List) Len() int {
 	return len(p.data)
 }
 
-func (p *List) String() string {
-	sep := ""
-	items := make([]string, len(p.data))
-	for i, item := range p.data {
-		val := toString(item)
-		if len(val) != 1 {
-			sep = " "
-		}
-		items[i] = fmt.Sprint(val)
-	}
-	return strings.Join(items, sep)
-}
-
 // Contains returns true if the list contains the element v.
 func (p *List) Contains(v obj) bool {
-	for _, item := range p.data {
-		if Equal(item, v) {
-			return true
-		}
-	}
-	return false
+	return p.IndexOf(v) != Invalid
 }
 
 // Append adds the element v to the end of the list.
@@ -123,10 +107,8 @@ func (p *List) Append(v obj) {
 // Set sets the element at the specified index i to v.
 func (p *List) Set(i Pos, v obj) {
 	n := len(p.data)
-	if i < 0 {
-		i = Pos(getListPos(i, n))
-	}
-	if i >= 0 && int(i) < n {
+	i = getListPos(i, n)
+	if i != Invalid {
 		p.data[i] = fromObj(v)
 	}
 }
@@ -134,31 +116,22 @@ func (p *List) Set(i Pos, v obj) {
 // Insert inserts the element v at the specified index i.
 func (p *List) Insert(i Pos, v obj) {
 	n := len(p.data)
-	if i < 0 {
-		if i == Invalid {
-			return
-		}
-		i = Pos(getListPos(i, n+1))
+	i = getListPos(i, n+1)
+	if i == Invalid {
+		return
 	}
-	val := fromObj(v)
-	p.data = append(p.data, val)
-	if int(i) < n {
-		copy(p.data[i+1:], p.data[i:])
-		p.data[i] = val
-	}
+	p.data = slices.Insert(p.data, i, fromObj(v))
 }
 
 // Delete removes the element at the specified index.
 func (p *List) Delete(i Pos) {
 	n := len(p.data)
-	if i < 0 {
-		if i == All {
-			p.data = p.data[:0]
-			return
-		}
-		i = Pos(getListPos(i, n))
+	if i == All {
+		p.Clear()
+		return
 	}
-	if i >= 0 && int(i) < n {
+	i = getListPos(i, n)
+	if i != Invalid {
 		p.data = append(p.data[:i], p.data[i+1:]...)
 	}
 }
@@ -166,10 +139,8 @@ func (p *List) Delete(i Pos) {
 // At returns the Value at the specified index.
 func (p *List) At(i Pos) Value {
 	n := len(p.data)
-	if i < 0 {
-		i = Pos(getListPos(i, n))
-	}
-	if i < 0 || int(i) >= n {
+	i = getListPos(i, n)
+	if i == Invalid {
 		return Value{}
 	}
 	return Value{p.data[i]}
@@ -206,6 +177,9 @@ func NewList(l ...obj) List {
 }
 
 func toString(v obj) string {
+	if n, ok := v.(float64); ok {
+		return scratch.FormatNumber(n)
+	}
 	if v == nil {
 		return ""
 	}
@@ -393,15 +367,19 @@ func toFloat64Any(v any) (float64, bool) {
 	return 0, false
 }
 
-func getListPos(i Pos, n int) int {
-	if i == Last {
-		return n - 1
-	}
-	if i == Random {
-		if n == 0 {
-			return 0
+// getListPos resolves a special position and validates it against the operation's
+// range. Insert includes the position after the last element in that range.
+func getListPos(i Pos, n int) Pos {
+	switch i {
+	case Last:
+		i = n - 1
+	case Random:
+		if n > 0 {
+			i = int(randomInt31n(int32(n)))
 		}
-		return int(randomInt31n(int32(n)))
 	}
-	return int(i)
+	if i < 0 || i >= n {
+		return Invalid
+	}
+	return i
 }

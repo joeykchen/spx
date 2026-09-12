@@ -17,16 +17,13 @@
 package spx
 
 import (
+	"cmp"
+	"github.com/goplus/spx/v3/internal/scratch"
 	"math"
 	"strings"
 
 	"github.com/goplus/spx/v3/internal/engine"
 	itime "github.com/goplus/spx/v3/internal/time"
-)
-
-const (
-	compareAbsTolerance = 1e-9
-	compareRelTolerance = 1e-9
 )
 
 // Rand__0 returns a random integer between from and to (inclusive).
@@ -45,12 +42,10 @@ func Rand__1(from, to float64) float64 {
 	return randomFloat64()*(to-from) + from
 }
 
-// Iround returns an integer value, while math.Round returns a float value.
+// Iround rounds to the nearest integer, with ties toward positive infinity,
+// as in Scratch's round operator.
 func Iround(v float64) int {
-	if v >= 0 {
-		return int(v + 0.5)
-	}
-	return int(v - 0.5)
+	return int(scratch.Round(v))
 }
 
 // FloorMod returns the remainder of dividend divided by divisor using
@@ -68,7 +63,7 @@ func FloorMod(dividend, divisor float64) float64 {
 // Contains reports whether substr is within s using Scratch's
 // case-insensitive string matching semantics.
 func Contains(s, substr string) bool {
-	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+	return strings.Contains(scratch.Lower(s), scratch.Lower(substr))
 }
 
 // Compare compares values using the same rules as Scratch's =, <, and >
@@ -79,38 +74,15 @@ func Contains(s, substr string) bool {
 func Compare(v1, v2 any) int {
 	if n1, ok1 := toCompareNumber(v1); ok1 {
 		if n2, ok2 := toCompareNumber(v2); ok2 {
-			switch {
-			case n1 < n2:
-				return -1
-			case n1 > n2:
-				return 1
-			default:
-				return 0
-			}
+			return cmp.Compare(n1, n2)
 		}
 	}
 
-	s1 := strings.ToLower(toString(v1))
-	s2 := strings.ToLower(toString(v2))
-	switch {
-	case s1 < s2:
-		return -1
-	case s1 > s2:
-		return 1
-	default:
-		return 0
-	}
+	return scratch.CompareText(toString(v1), toString(v2))
 }
 
 // Equal reports whether two values match Scratch's = operator semantics.
-// Numeric values use a small absolute and relative tolerance to absorb
-// floating-point rounding errors. Compare remains exact for ordering.
 func Equal(v1, v2 any) bool {
-	if n1, ok1 := toCompareNumber(v1); ok1 {
-		if n2, ok2 := toCompareNumber(v2); ok2 {
-			return nearlyEqual(n1, n2)
-		}
-	}
 	return Compare(v1, v2) == 0
 }
 
@@ -169,28 +141,17 @@ func PenColorParamFromString(s string) PenColorParam {
 	}
 }
 
-func nearlyEqual(a, b float64) bool {
-	if a == b {
-		return true
-	}
-	if math.IsInf(a, 0) || math.IsInf(b, 0) {
-		return false
-	}
-	diff := math.Abs(a - b)
-	if diff <= compareAbsTolerance {
-		return true
-	}
-	largest := math.Max(math.Abs(a), math.Abs(b))
-	return diff <= largest*compareRelTolerance
-}
-
 func toCompareNumber(v any) (float64, bool) {
 	v = fromObj(v)
 	if v == nil {
 		return 0, false
 	}
-	if s, ok := v.(string); ok && strings.TrimSpace(s) == "" {
-		return 0, false
+	if s, ok := v.(string); ok {
+		if scratch.TrimSpace(s) == "" {
+			return 0, false
+		}
+		return scratch.ParseNumber(s)
 	}
-	return toFloat64Any(v)
+	n, ok := toFloat64Any(v)
+	return n, ok && !math.IsNaN(n)
 }
