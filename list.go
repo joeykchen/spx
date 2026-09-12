@@ -18,6 +18,7 @@ package spx
 
 import (
 	"fmt"
+	"github.com/goplus/spx/v3/internal/scratch"
 	"strconv"
 	"strings"
 )
@@ -206,6 +207,9 @@ func NewList(l ...obj) List {
 }
 
 func toString(v obj) string {
+	if n, ok := v.(float64); ok {
+		return scratch.FormatNumber(n)
+	}
 	if v == nil {
 		return ""
 	}
