@@ -104,7 +104,7 @@ func (p *SpriteImpl) fenceBounds() *mathf.Rect2 {
 	centerY += offsetY
 
 	rotation, _, _ := getRenderRotationAndScale(p)
-	sin, cos := math.Sincos(toRadian(rotation))
+	sin, cos := math.Sincos(engine.DegToRad(rotation))
 	aabbWidth := math.Abs(cos)*width + math.Abs(sin)*height
 	aabbHeight := math.Abs(sin)*width + math.Abs(cos)*height
 

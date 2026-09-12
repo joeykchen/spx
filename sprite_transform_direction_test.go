@@ -89,10 +89,3 @@ func TestSpriteHeadingMultipleTurnsAndNonFinite(t *testing.T) {
 		}
 	}
 }
-
-func TestTurnTweenUsesShortestPathAfterMultipleRevolutions(t *testing.T) {
-	from, to := normalizeAngleRange(-1079, 719)
-	if math.Abs(to-from) != 2 {
-		t.Fatalf("rotation path %g -> %g exceeds shortest path", from, to)
-	}
-}

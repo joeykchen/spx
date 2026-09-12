@@ -17,6 +17,7 @@
 package engine
 
 import (
+	"math"
 	"testing"
 
 	mathf "github.com/goplus/spbase/mathf"
@@ -43,5 +44,59 @@ func TestHeadingToPoint(t *testing.T) {
 				t.Fatalf("HeadingToPoint(%v, %v) = %v, want %v", from, tt.to, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNormalizeDegrees(t *testing.T) {
+	for _, tc := range []struct{ angle, want float64 }{
+		{0, 0}, {math.Copysign(0, -1), math.Copysign(0, -1)},
+		{180, 180}, {-180, 180}, {900, 180}, {-900, 180},
+		{1081, 1}, {-1081, -1}, {720.25, 0.25}, {-720.25, -0.25},
+	} {
+		if got := NormalizeDegrees(tc.angle); math.Float64bits(got) != math.Float64bits(tc.want) {
+			t.Errorf("NormalizeDegrees(%g) = %g, want %g", tc.angle, got, tc.want)
+		}
+	}
+	for _, angle := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if !math.IsNaN(NormalizeDegrees(angle)) {
+			t.Errorf("NormalizeDegrees(%g) must be NaN", angle)
+		}
+	}
+}
+
+func TestNormalizeAngleRange(t *testing.T) {
+	for _, tc := range []struct{ from, to, wantFrom, wantTo float64 }{
+		{-1079, 719, 361, 359}, {719, -1079, 359, 361},
+		{0, 180, 0, 180}, {180, 0, 180, 0},
+		{-180, 180, 180, 180}, {720, -720, 0, 0},
+		{359.5, 0.5, 359.5, 360.5},
+	} {
+		from, to := NormalizeAngleRange(tc.from, tc.to)
+		if from != tc.wantFrom || to != tc.wantTo {
+			t.Errorf("NormalizeAngleRange(%g, %g) = (%g, %g), want (%g, %g)",
+				tc.from, tc.to, from, to, tc.wantFrom, tc.wantTo)
+		}
+	}
+}
+
+func TestDegToRad(t *testing.T) {
+	for _, tc := range []struct{ degrees, radians float64 }{
+		{0, 0}, {math.Copysign(0, -1), math.Copysign(0, -1)},
+		{180, math.Pi}, {-180, -math.Pi},
+		{math.Inf(1), math.Inf(1)}, {math.Inf(-1), math.Inf(-1)},
+		{math.SmallestNonzeroFloat64, 0},
+	} {
+		if got := DegToRad(tc.degrees); math.Float64bits(got) != math.Float64bits(tc.radians) {
+			t.Errorf("DegToRad(%g) = %g, want %g", tc.degrees, got, tc.radians)
+		}
+	}
+	for _, degrees := range []float64{1e308, -1e308} {
+		radians := DegToRad(degrees)
+		if math.IsInf(radians, 0) || math.IsNaN(radians) || math.Abs(RadToDeg(radians)/degrees-1) > 1e-15 {
+			t.Errorf("large finite angle %g did not survive conversion: %g", degrees, radians)
+		}
+	}
+	if !math.IsNaN(DegToRad(math.NaN())) {
+		t.Fatal("NaN changed")
 	}
 }

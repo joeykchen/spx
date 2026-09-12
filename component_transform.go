@@ -40,9 +40,6 @@ const (
 	// fullCircleDegrees represents a complete rotation in degrees.
 	fullCircleDegrees = 360.0
 
-	// halfCircleDegrees represents half a rotation in degrees.
-	halfCircleDegrees = 180.0
-
 	// fenceWidth matches Scratch's keepInFence margin.
 	fenceWidth = 15.0
 
@@ -126,7 +123,7 @@ func (t *transformComponent) getPivot() mathf.Vec2 {
 // ============================================================================
 
 func (t *transformComponent) moveForward(step float64) {
-	sin, cos := math.Sincos(toRadian(t.direction))
+	sin, cos := math.Sincos(engine.DegToRad(t.direction))
 	t.moveTo(t.x+step*sin, t.y+step*cos)
 }
 
@@ -157,7 +154,7 @@ func (t *transformComponent) glideTo(obj any, secs float64) {
 }
 
 func (t *transformComponent) step(step, speed float64, animation SpriteAnimationName) {
-	dirSin, dirCos := math.Sincos(toRadian(t.direction))
+	dirSin, dirCos := math.Sincos(engine.DegToRad(t.direction))
 	diff := mathf.NewVec2(step*dirSin, step*dirCos)
 	to := mathf.NewVec2(t.x, t.y).Add(diff)
 	t.stepToPos(to.X, to.Y, speed, animation)
@@ -388,7 +385,7 @@ func (t *transformComponent) turn(delta Direction, speed float64, animation Spri
 
 func (t *transformComponent) turnTo(obj any, speed float64, animation SpriteAnimationName) {
 	targetAngle := t.calculateTargetAngle(obj)
-	fromAngle, toAngle := normalizeAngleRange(t.direction, targetAngle)
+	fromAngle, toAngle := engine.NormalizeAngleRange(t.direction, targetAngle)
 
 	t.doTurnAnimation(fromAngle, toAngle, speed, animation, func() {
 		if t.applyDirection(targetAngle) && isDebugInstrEnabled() {
@@ -399,7 +396,7 @@ func (t *transformComponent) turnTo(obj any, speed float64, animation SpriteAnim
 
 func (t *transformComponent) turnToPos(x, y, speed float64, animation SpriteAnimationName) {
 	targetAngle := t.calculateTargetAngleToPos(x, y)
-	fromAngle, toAngle := normalizeAngleRange(t.direction, targetAngle)
+	fromAngle, toAngle := engine.NormalizeAngleRange(t.direction, targetAngle)
 
 	t.doTurnAnimation(fromAngle, toAngle, speed, animation, func() {
 		if t.applyDirection(targetAngle) && isDebugInstrEnabled() {
@@ -418,14 +415,14 @@ func (t *transformComponent) bounceOffEdge(area string) {
 		return
 	}
 
-	radians := toRadian(90 - t.direction)
+	radians := engine.DegToRad(90 - t.direction)
 	dx := math.Cos(radians)
 	dy := -math.Sin(radians)
 
 	dx, dy = t.calculateBounceDirection(nearestEdge, dx, dy)
 
 	newDirection := engine.RadToDeg(math.Atan2(dy, dx)) + 90
-	t.direction = normalizeDirection(newDirection)
+	t.direction = engine.NormalizeDegrees(newDirection)
 
 	t.moveTo(t.x, t.y)
 }
@@ -439,7 +436,7 @@ func (t *transformComponent) applyDirection(dir float64) bool {
 	if math.IsNaN(dir) || math.IsInf(dir, 0) {
 		return false
 	}
-	dir = normalizeDirection(dir)
+	dir = engine.NormalizeDegrees(dir)
 	if t.direction == dir {
 		return false
 	}
@@ -450,11 +447,11 @@ func (t *transformComponent) applyDirection(dir float64) bool {
 }
 
 func (t *transformComponent) directionTo(obj any) Direction {
-	return normalizeDirection(t.calculateTargetAngle(obj))
+	return engine.NormalizeDegrees(t.calculateTargetAngle(obj))
 }
 
 func (t *transformComponent) directionToPos(x, y float64) Direction {
-	return normalizeDirection(t.calculateTargetAngleToPos(x, y))
+	return engine.NormalizeDegrees(t.calculateTargetAngleToPos(x, y))
 }
 
 // calculateTargetAngle calculates the angle to turn toward the specified object.
