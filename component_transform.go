@@ -388,7 +388,7 @@ func (t *transformComponent) turn(delta Direction, speed float64, animation Spri
 
 func (t *transformComponent) turnTo(obj any, speed float64, animation SpriteAnimationName) {
 	targetAngle := t.calculateTargetAngle(obj)
-	fromAngle, toAngle := t.normalizeAngleRange(t.direction, targetAngle)
+	fromAngle, toAngle := normalizeAngleRange(t.direction, targetAngle)
 
 	t.doTurnAnimation(fromAngle, toAngle, speed, animation, func() {
 		if t.applyDirection(targetAngle) && isDebugInstrEnabled() {
@@ -399,7 +399,7 @@ func (t *transformComponent) turnTo(obj any, speed float64, animation SpriteAnim
 
 func (t *transformComponent) turnToPos(x, y, speed float64, animation SpriteAnimationName) {
 	targetAngle := t.calculateTargetAngleToPos(x, y)
-	fromAngle, toAngle := t.normalizeAngleRange(t.direction, targetAngle)
+	fromAngle, toAngle := normalizeAngleRange(t.direction, targetAngle)
 
 	t.doTurnAnimation(fromAngle, toAngle, speed, animation, func() {
 		if t.applyDirection(targetAngle) && isDebugInstrEnabled() {
@@ -436,6 +436,9 @@ func (t *transformComponent) bounceOffEdge(area string) {
 
 // applyDirection normalizes the direction and reports whether it changed.
 func (t *transformComponent) applyDirection(dir float64) bool {
+	if math.IsNaN(dir) || math.IsInf(dir, 0) {
+		return false
+	}
 	dir = normalizeDirection(dir)
 	if t.direction == dir {
 		return false
@@ -470,20 +473,6 @@ func (t *transformComponent) calculateTargetAngleToPos(x, y float64) float64 {
 		return t.direction
 	}
 	return engine.HeadingToPoint(mathf.NewVec2(t.x, t.y), mathf.NewVec2(x, y))
-}
-
-// normalizeAngleRange chooses equivalent angles with the shortest rotation path.
-func (t *transformComponent) normalizeAngleRange(from, to float64) (float64, float64) {
-	fromNorm := math.Mod(from+fullCircleDegrees, fullCircleDegrees)
-	toNorm := math.Mod(to+fullCircleDegrees, fullCircleDegrees)
-
-	if toNorm-fromNorm > halfCircleDegrees {
-		fromNorm += fullCircleDegrees
-	} else if fromNorm-toNorm > halfCircleDegrees {
-		toNorm += fullCircleDegrees
-	}
-
-	return fromNorm, toNorm
 }
 
 // calculateBounceDirection calculates the new direction vector after bouncing
@@ -566,19 +555,4 @@ func toRotationStyle(style string) RotationStyle {
 		spxlog.Warn("Unrecognized rotationStyle value '%s', using default 'Normal'.", style)
 		return Normal
 	}
-}
-
-// toRadian converts degrees to radians.
-func toRadian(dir float64) float64 {
-	return math.Pi * dir / 180
-}
-
-// normalizeDirection normalizes a direction angle to the range (-180, 180].
-func normalizeDirection(dir float64) float64 {
-	if dir <= -180 {
-		dir += 360
-	} else if dir > 180 {
-		dir -= 360
-	}
-	return dir
 }
