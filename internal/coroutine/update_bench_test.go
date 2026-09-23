@@ -27,3 +27,21 @@ func BenchmarkUpdateSleepingThreads(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkUpdateSleepingWithNewJob(b *testing.B) {
+	co := New(nil)
+	itime.Start(nil)
+	for range 1000 {
+		thread := co.newThread("sleeper")
+		co.setThreadState(thread, threadBlocked)
+		co.currentJobs.PushBack(&WaitJob{Th: thread, Type: waitTypeTime, Time: 1e12})
+	}
+	co.Update()
+	job := &WaitJob{Type: waitTypeMainThread, Call: func() {}}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		co.enqueuePriorityJob(job)
+		co.Update()
+	}
+}

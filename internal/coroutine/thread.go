@@ -41,7 +41,8 @@ const (
 )
 
 type threadImpl struct {
-	Obj ThreadObj
+	Obj   ThreadObj
+	owner atomic.Pointer[Coroutines]
 
 	id    int64
 	name  string
@@ -84,6 +85,7 @@ func (p *Coroutines) newThread(obj ThreadObj) Thread {
 		done:          make(chan struct{}),
 		yieldedOrDone: make(chan struct{}),
 	}
+	th.owner.Store(p)
 	th.resumeOrder = th.id
 	th.ctx, th.cancelFunc = context.WithCancel(context.Background())
 	if p.debug {
@@ -104,13 +106,17 @@ func (th *threadImpl) Context() context.Context {
 // Cancel requests a stop and wakes the thread if it is suspended.
 func (th *threadImpl) Cancel() {
 	th.suspendMu.Lock()
-	defer th.suspendMu.Unlock()
 	if th.stopped.Load() {
+		th.suspendMu.Unlock()
 		return
 	}
 	th.stopped.Store(true)
 	th.cancelContext()
 	th.suspendCond.Signal()
+	th.suspendMu.Unlock()
+	if owner := th.owner.Load(); owner != nil {
+		owner.unparkSleeping()
+	}
 }
 
 func (th *threadImpl) cancelContext() {

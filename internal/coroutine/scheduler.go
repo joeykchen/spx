@@ -81,10 +81,16 @@ func (p *Coroutines) Yield(me Thread) {
 // Resume wakes me if it is suspended. If Yield has not published suspension
 // yet, Resume records a signal for that Yield to consume without blocking.
 func (p *Coroutines) Resume(me Thread) {
+	if p.resume(me) {
+		p.unparkSleeping()
+	}
+}
+
+func (p *Coroutines) resume(me Thread) bool {
 	me.suspendMu.Lock()
 	defer me.suspendMu.Unlock()
 	if p.isThreadCanceled(me) {
-		return
+		return false
 	}
 
 	switch me.suspendState {
@@ -93,7 +99,10 @@ func (p *Coroutines) Resume(me Thread) {
 		me.suspendCond.Signal()
 	case suspendStateRunning:
 		me.suspendState = suspendStateSignaled
+	default:
+		return false
 	}
+	return true
 }
 
 // StopAtNextYield cancels me when it next yields to the scheduler.
@@ -141,7 +150,7 @@ func (p *Coroutines) markRunnableAndResume(th Thread) {
 	p.setThreadStateLocked(th, threadRunnable)
 	p.schedulerCond.Signal()
 	p.schedulerMu.Unlock()
-	p.Resume(th)
+	p.resume(th)
 }
 
 func (p *Coroutines) isThreadCanceled(th Thread) bool {

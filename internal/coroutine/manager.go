@@ -74,6 +74,9 @@ type Coroutines struct {
 	currentJobs     *Queue[*WaitJob]
 	deferredJobs    *Queue[*WaitJob]
 	roundJobs       *Queue[*WaitJob]
+	parkedJobs      *Queue[*WaitJob]
+	parkedTime      float64
+	parkedFrame     int64
 	redrawFrame     atomic.Int64
 	scriptRound     atomic.Uint64
 
@@ -109,6 +112,7 @@ func New(onPanic func(PanicReport)) *Coroutines {
 		currentJobs:       jobs,
 		deferredJobs:      &Queue[*WaitJob]{pool: jobs.pool},
 		roundJobs:         &Queue[*WaitJob]{pool: jobs.pool},
+		parkedJobs:        &Queue[*WaitJob]{pool: jobs.pool},
 		readGCStats:       sdebug.ReadGCStats,
 		updateWatchdogNow: stime.Now,
 	}

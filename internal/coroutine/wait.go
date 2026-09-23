@@ -131,6 +131,7 @@ func (p *Coroutines) enqueueAndYield(job *WaitJob) {
 	// Publish blocking and its wake-up job atomically.
 	p.schedulerMu.Lock()
 	p.setThreadStateLocked(me, threadBlocked)
+	p.unparkSleepingLocked()
 	p.currentJobs.PushBack(job)
 	p.schedulerCond.Signal()
 	p.schedulerMu.Unlock()
@@ -139,6 +140,7 @@ func (p *Coroutines) enqueueAndYield(job *WaitJob) {
 
 func (p *Coroutines) enqueuePriorityJob(job *WaitJob) {
 	p.schedulerMu.Lock()
+	p.unparkSleepingLocked()
 	p.currentJobs.PushFront(job)
 	p.schedulerCond.Signal()
 	p.schedulerMu.Unlock()

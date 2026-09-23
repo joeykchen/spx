@@ -18,6 +18,7 @@ package coroutine
 
 import (
 	"cmp"
+	"math"
 	sdebug "runtime/debug"
 	stime "time"
 
@@ -48,6 +49,7 @@ func (p *Coroutines) Update() {
 	gcStatsBefore := p.readGCStatsBeforeUpdate()
 
 	stats, state := p.beginUpdate()
+	p.unparkDue(&state)
 	stats.GCStatsEnabled = gcStatsBefore != nil
 	p.runUpdateLoop(&stats, &state)
 	p.finishUpdate(&stats, start, gcStatsBefore)
@@ -180,9 +182,66 @@ func (p *Coroutines) promoteDeferredJobs(stats *UpdateJobsStats) {
 	p.deferredJobs.SortStable(func(a, b *WaitJob) int {
 		return cmp.Compare(a.threadOrder(), b.threadOrder())
 	})
-	stats.NextCount = p.deferredJobs.Count()
-	p.currentJobs.Move(p.deferredJobs)
+	p.schedulerMu.Lock()
+	count := p.deferredJobs.Count()
+	if count > 0 && p.parkedJobs.Count() > 0 {
+		p.unparkSleepingLocked()
+	}
+	minTime, minFrame, park := 0.0, int64(0), false
+	if count > 0 && p.currentJobs.Count() == 0 {
+		minTime, minFrame, park = p.sleepDeadline()
+	}
+	if park {
+		p.parkedTime = minTime
+		p.parkedFrame = minFrame
+		p.parkedJobs.Move(p.deferredJobs)
+	} else {
+		p.currentJobs.Move(p.deferredJobs)
+	}
+	stats.NextCount = max(count, p.parkedJobs.Count())
+	p.schedulerMu.Unlock()
 	stats.MoveTime = elapsedMillis(start)
+}
+
+func (p *Coroutines) sleepDeadline() (minTime float64, minFrame int64, ok bool) {
+	first := true
+	invalid := p.deferredJobs.Any(func(job *WaitJob) bool {
+		if job.Type != waitTypeTime || p.isThreadCanceled(job.Th) {
+			return true
+		}
+		if first || job.Time < minTime || math.IsNaN(job.Time) {
+			minTime = job.Time
+		}
+		if first || job.Frame < minFrame {
+			minFrame = job.Frame
+		}
+		first = false
+		return false
+	})
+	return minTime, minFrame, !first && !invalid
+}
+
+func (p *Coroutines) unparkDue(state *updateState) {
+	p.schedulerMu.Lock()
+	// Independent minima may wake early; processing checks each deadline again.
+	if p.parkedJobs.Count() > 0 && state.frame > p.parkedFrame && !(state.levelTime < p.parkedTime) {
+		p.unparkSleepingLocked()
+	}
+	p.schedulerMu.Unlock()
+}
+
+func (p *Coroutines) unparkSleeping() {
+	p.schedulerMu.Lock()
+	p.unparkSleepingLocked()
+	p.schedulerMu.Unlock()
+}
+
+func (p *Coroutines) unparkSleepingLocked() {
+	if p.parkedJobs.Count() == 0 {
+		return
+	}
+	p.currentJobs.Move(p.parkedJobs)
+	p.schedulerCond.Signal()
 }
 
 func (p *Coroutines) finishUpdate(stats *UpdateJobsStats, start stime.Time, before *sdebug.GCStats) {

@@ -126,6 +126,7 @@ func (p *Coroutines) finishThread(th Thread, gid uint64, recovered any) {
 	}
 	// Make waiters runnable before removing the target's scheduler state.
 	th.cancelContext()
+	th.owner.Store(nil)
 	close(th.done)
 	p.removeThreadState(th)
 	p.setCurrent(nil)
