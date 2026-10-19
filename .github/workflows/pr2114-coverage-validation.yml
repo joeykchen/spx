@@ -1,0 +1,50 @@
+name: PR 2114 coverage validation
+on:
+  push:
+    branches: [test/pr2114-coverage-validation]
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: goplus/spx
+          ref: f818e2f69562509a512701f702813e2670a7179b
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.5'
+          cache: false
+      - name: Prepare public source and dependencies for offline tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pr2114-source" "$RUNNER_TEMP/pr2114-go" "$RUNNER_TEMP/pr2114-deps"
+          git archive HEAD | gzip > "$RUNNER_TEMP/pr2114-source/source.tar.gz"
+          go version > "$RUNNER_TEMP/pr2114-source/toolchain.txt"
+          for module in . internal/cmd/buildctl internal/cmd/install; do
+            (cd "$module" && GOWORK=off go mod download)
+          done
+          tar -C "$(go env GOROOT)" -czf "$RUNNER_TEMP/pr2114-go/go.tar.gz" .
+          tar -C "$(go env GOMODCACHE)" --exclude=cache/lock --exclude='*.lock' -czf "$RUNNER_TEMP/pr2114-deps/modules.tar.gz" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr2114-public-source
+          path: ${{ runner.temp }}/pr2114-source
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr2114-go-toolchain
+          path: ${{ runner.temp }}/pr2114-go
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr2114-public-modules
+          path: ${{ runner.temp }}/pr2114-deps
+          retention-days: 1
+          compression-level: 0
