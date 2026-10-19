@@ -26,23 +26,28 @@ jobs:
           git archive HEAD | gzip > "$RUNNER_TEMP/pr2114-source/source.tar.gz"
           go version > "$RUNNER_TEMP/pr2114-source/toolchain.txt"
           for module in . internal/cmd/buildctl internal/cmd/install; do
-            (cd "$module" && GOWORK=off go mod download)
+            if [ -f "$module/go.mod" ]; then
+              (cd "$module" && GOWORK=off go mod download)
+            fi
           done
           tar -C "$(go env GOROOT)" -czf "$RUNNER_TEMP/pr2114-go/go.tar.gz" .
           tar -C "$(go env GOMODCACHE)" --exclude=cache/lock --exclude='*.lock' -czf "$RUNNER_TEMP/pr2114-deps/modules.tar.gz" .
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: pr2114-public-source
           path: ${{ runner.temp }}/pr2114-source
           retention-days: 1
           compression-level: 0
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: pr2114-go-toolchain
           path: ${{ runner.temp }}/pr2114-go
           retention-days: 1
           compression-level: 0
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: pr2114-public-modules
           path: ${{ runner.temp }}/pr2114-deps
