@@ -596,9 +596,16 @@ func TestWebServerPIDPathUsesAbsoluteTargetDir(t *testing.T) {
 	}
 }
 
-func TestInterpretedRootsResolveDefaultsAndRelativePaths(t *testing.T) {
-	root := t.TempDir()
+func TestInterpretedRootsUsePreparedPathsAndSessionOverrides(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Chdir(root)
+	if err := os.Mkdir("game", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	spec, _ := findCommand("run")
 	for _, tt := range []struct {
 		name             string
 		cmd              CmdTool
@@ -610,6 +617,11 @@ func TestInterpretedRootsResolveDefaultsAndRelativePaths(t *testing.T) {
 		{"explicit session", CmdTool{TargetDir: root, RuntimeTempDir: filepath.Join(root, "other")}, root, filepath.Join(root, "other")},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			target := tt.cmd.TargetDir
+			tt.cmd.Args.Path = &target
+			if err := tt.cmd.prepareCommand(spec, "unused", "project"); err != nil {
+				t.Fatal(err)
+			}
 			got, err := tt.cmd.interpretedRoots()
 			if err != nil || got.ProjectDir != tt.project || got.AssetDir != filepath.Join(tt.project, "assets") || got.SessionDir != tt.session {
 				t.Fatalf("interpreted roots = %+v, %v; want project %q, session %q", got, err, tt.project, tt.session)

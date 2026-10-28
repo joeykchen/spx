@@ -139,10 +139,7 @@ func (cmd *CmdTool) interpretedRoots() (interpruntime.Roots, error) {
 	if cmd.TargetDir == "" {
 		return interpruntime.Roots{}, fmt.Errorf("interpreted project directory is not configured")
 	}
-	projectDir, err := filepath.Abs(cmd.TargetDir)
-	if err != nil {
-		return interpruntime.Roots{}, fmt.Errorf("resolve interpreted project directory: %w", err)
-	}
+	projectDir := cmd.TargetDir
 	sessionDir := cmd.RuntimeTempDir
 	if sessionDir == "" {
 		sessionDir = filepath.Join(projectDir, ".temp")

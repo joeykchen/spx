@@ -104,17 +104,21 @@ func (cmd *CmdTool) prepareCommand(spec commandSpec, fsRelDir, dstRelDir string)
 	switch spec.setup {
 	case noSetup:
 		return nil
-	case interpretedSetup:
-		return cmd.resolveProjectPaths(*cmd.Args.Path, dstRelDir)
-	case pathSetup, projectSetup, webExportSetup:
-		if err := cmd.setupPaths(dstRelDir); err != nil {
+	case interpretedSetup, pathSetup, projectSetup, webExportSetup:
+		if err := cmd.resolveProjectPaths(*cmd.Args.Path, dstRelDir); err != nil {
 			return err
-		}
-		if spec.setup == pathSetup {
-			return nil
 		}
 	default:
 		return fmt.Errorf("command %q has an invalid setup", spec.name)
+	}
+	if spec.setup == interpretedSetup {
+		return nil
+	}
+	if err := cmd.setupPathOptions(); err != nil {
+		return err
+	}
+	if spec.setup == pathSetup {
+		return nil
 	}
 	cmd.RuntimeMode = spec.runtime
 	if err := cmd.CheckEnv(); err != nil {
@@ -126,7 +130,7 @@ func (cmd *CmdTool) prepareCommand(spec commandSpec, fsRelDir, dstRelDir string)
 	if spec.setup == webExportSetup {
 		return nil
 	}
-	return cmd.SetupEnv(cmd.Version, cmd.ProjectFS, fsRelDir, dstRelDir)
+	return cmd.setupEnv(fsRelDir)
 }
 
 func (cmd *CmdTool) buildCommand(spec commandSpec) error {

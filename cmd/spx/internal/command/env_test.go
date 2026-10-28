@@ -163,52 +163,6 @@ func TestAdaptGoModReportsScaffoldErrors(t *testing.T) {
 	})
 }
 
-func TestPrepareCommandNormalizesRelativeProjectPath(t *testing.T) {
-	targetDir, err := filepath.EvalSymlinks(setupAdaptGoModFixture(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(filepath.Dir(targetDir))
-	before := workingDirectory(t)
-	relativePath := filepath.Base(targetDir)
-	wantAbsDir, err := filepath.Abs(relativePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(targetDir, "main.spx"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("GOOS", "linux")
-	t.Setenv("GOARCH", "amd64")
-	t.Setenv("GODEBUG", os.Getenv("GODEBUG"))
-	serverAddr, tags := "", "pure_engine"
-	cmd := CmdTool{
-		FileSuffix: "spx", Version: "test", ProjectFS: webExportTestFS,
-		GoModTemplate: "must not create a nested local module",
-		Args:          ExtraArgs{CmdName: "build", Path: &relativePath, ServerAddr: &serverAddr, Tags: &tags},
-	}
-	spec, ok := findCommand("build")
-	if !ok {
-		t.Fatal("build command is not registered")
-	}
-	if err := cmd.prepareCommand(spec, "template/project", "project"); err != nil {
-		t.Fatal(err)
-	}
-	assertWorkingDirectory(t, before)
-	if cmd.TargetDir != wantAbsDir || !filepath.IsAbs(cmd.TargetDir) {
-		t.Fatalf("TargetDir = %q, want %q", cmd.TargetDir, wantAbsDir)
-	}
-	if cmd.TargetDir != wantAbsDir || *cmd.Args.Path != wantAbsDir {
-		t.Fatalf("command paths = %q, %q, want %q", cmd.TargetDir, *cmd.Args.Path, wantAbsDir)
-	}
-	if cmd.ProjectDir != filepath.Join(wantAbsDir, "project") {
-		t.Fatalf("ProjectDir = %q, want generated project below %q", cmd.ProjectDir, wantAbsDir)
-	}
-	if _, err := os.Stat(filepath.Join(wantAbsDir, "go.mod")); !os.IsNotExist(err) {
-		t.Fatalf("relative local project unexpectedly received a nested module: %v", err)
-	}
-}
-
 func TestShouldRunGoModTidy(t *testing.T) {
 	repoTargetDir := setupAdaptGoModFixture(t)
 	repoCmd := CmdTool{TargetDir: repoTargetDir}
@@ -563,7 +517,7 @@ func TestProjectImportTimeoutStopsTool(t *testing.T) {
 	}
 }
 
-func TestSetupPaths(t *testing.T) {
+func TestPrepareCommandPathOptions(t *testing.T) {
 	for _, test := range []struct {
 		name, address, wantError string
 		port                     int
@@ -586,11 +540,11 @@ func TestSetupPaths(t *testing.T) {
 			}
 			address := test.address
 			cmd := &CmdTool{Args: ExtraArgs{Path: &target, ServerAddr: &address}}
-			err := cmd.setupPaths("project")
+			err := cmd.prepareCommand(commandSpec{setup: pathSetup}, "", "project")
 			assertWorkingDirectory(t, before)
 			if test.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), test.wantError) {
-					t.Fatalf("setupPaths error = %v, want %q", err, test.wantError)
+					t.Fatalf("prepareCommand error = %v, want %q", err, test.wantError)
 				}
 				return
 			}
@@ -606,6 +560,23 @@ func TestSetupPaths(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("prepared directory disappears", func(t *testing.T) {
+		source, address := t.TempDir(), ""
+		cmd := &CmdTool{Args: ExtraArgs{Path: &source, ServerAddr: &address}}
+		if err := cmd.resolveProjectPaths(source, "project"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(cmd.TargetDir); err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.setupPathOptions(); !errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), "failed to inspect target directory") {
+			t.Fatalf("disappeared source error = %v", err)
+		}
+		if _, err := os.Stat(cmd.TargetDir); !os.IsNotExist(err) {
+			t.Fatalf("validation recreated the source: %v", err)
+		}
+	})
 }
 
 func TestResolveAppPathSearchAndFallback(t *testing.T) {
@@ -680,13 +651,19 @@ func TestFindSpxRoot(t *testing.T) {
 	}
 }
 
-func TestSetupEnvRejectsInvalidPlatformEngineAndSession(t *testing.T) {
+func TestPrepareCommandRejectsInvalidEnvironment(t *testing.T) {
 	for _, scenario := range []string{"unsupported architecture", "invalid engine path", "missing target directory", "blocked session directory", "missing project template"} {
 		t.Run(scenario, func(t *testing.T) {
 			t.Setenv("GOARCH", "amd64")
 			t.Setenv("PATH", t.TempDir())
 			root := t.TempDir()
-			cmd := &CmdTool{TargetDir: root, GoBinPath: filepath.Join(root, "bin")}
+			writeCommandTestFile(t, filepath.Join(root, "main.spx"), "")
+			t.Setenv("GODEBUG", os.Getenv("GODEBUG"))
+			source, address := root, ""
+			cmd := &CmdTool{
+				FileSuffix: ".spx", Version: "test", GoBinPath: filepath.Join(root, "bin"),
+				Args: ExtraArgs{Path: &source, ServerAddr: &address},
+			}
 			want := ""
 			switch scenario {
 			case "unsupported architecture":
@@ -696,15 +673,16 @@ func TestSetupEnvRejectsInvalidPlatformEngineAndSession(t *testing.T) {
 				cmd.GoBinPath = "invalid\x00path"
 				want = "requires engine to be installed"
 			case "missing target directory":
-				cmd.TargetDir = filepath.Join(root, "missing")
-				want = "failed to resolve project directory"
+				source = filepath.Join(root, "missing")
+				want = "failed to resolve target directory"
 			case "blocked session directory":
 				writeCommandTestFile(t, filepath.Join(root, ".temp"), "keep")
 				want = "failed to create temp directory"
 			case "missing project template":
 				want = "prepare project files"
 			}
-			err := cmd.SetupEnv("test", embed.FS{}, "template/project", "project")
+			spec, _ := findCommand("build")
+			err := cmd.prepareCommand(spec, "template/project", "project")
 			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Fatalf("setup error = %v, want %q", err, want)
 			}
@@ -712,7 +690,7 @@ func TestSetupEnvRejectsInvalidPlatformEngineAndSession(t *testing.T) {
 				if !errors.Is(err, os.ErrNotExist) {
 					t.Fatalf("missing source error = %v, want ErrNotExist", err)
 				}
-				if _, err := os.Stat(cmd.TargetDir); !os.IsNotExist(err) {
+				if _, err := os.Stat(source); !os.IsNotExist(err) {
 					t.Fatalf("failed setup created the missing source directory: %v", err)
 				}
 			}
@@ -723,12 +701,8 @@ func TestSetupEnvRejectsInvalidPlatformEngineAndSession(t *testing.T) {
 	}
 }
 
-func TestSetupEnvAcceptsRelativeTargetDirectory(t *testing.T) {
-	for _, linked := range []bool{false, true} {
-		name := "directory"
-		if linked {
-			name = "symlink"
-		}
+func TestPrepareCommandResolvesProjectPaths(t *testing.T) {
+	for _, name := range []string{"directory", "symlink", "symlink changed during engine probe"} {
 		t.Run(name, func(t *testing.T) {
 			target, err := filepath.EvalSymlinks(setupAdaptGoModFixture(t))
 			if err != nil {
@@ -740,15 +714,41 @@ func TestSetupEnvAcceptsRelativeTargetDirectory(t *testing.T) {
 			t.Setenv("GOARCH", "amd64")
 			tags := "pure_engine"
 			source := filepath.Base(target)
-			if linked {
+			if name != "directory" {
 				source = "linked-game"
 				if err := os.Symlink(target, source); err != nil {
 					t.Skipf("symlink unavailable: %v", err)
 				}
 			}
-			cmd := CmdTool{TargetDir: source, Args: ExtraArgs{Tags: &tags}}
-			if err := cmd.SetupEnv("test", webExportTestFS, "template/project", "project"); err != nil {
+			var redirected string
+			if name == "symlink changed during engine probe" {
+				tags = ""
+				redirected = t.TempDir()
+				t.Setenv("SPX_TEST_SOURCE_LINK", filepath.Join(filepath.Dir(target), source))
+				t.Setenv("SPX_TEST_REDIRECTED_SOURCE", redirected)
+				installCommandTestTools(t, map[string]string{"gdspxtest": `test "$*" = --version
+/bin/rm "$SPX_TEST_SOURCE_LINK"
+/bin/ln -s "$SPX_TEST_REDIRECTED_SOURCE" "$SPX_TEST_SOURCE_LINK"`})
+			}
+			writeCommandTestFile(t, filepath.Join(target, "main.spx"), "")
+			t.Setenv("GODEBUG", os.Getenv("GODEBUG"))
+			address := ""
+			cmd := CmdTool{
+				FileSuffix: ".spx", Version: "test", ProjectFS: webExportTestFS,
+				GoModTemplate: "must not create a nested local module",
+				Args:          ExtraArgs{CmdName: "build", Path: &source, ServerAddr: &address, Tags: &tags},
+			}
+			spec, _ := findCommand("build")
+			if err := cmd.prepareCommand(spec, "template/project", "project"); err != nil {
 				t.Fatal(err)
+			}
+			if redirected != "" {
+				if entries, err := os.ReadDir(redirected); err != nil || len(entries) != 0 {
+					t.Fatalf("engine probe redirected project output: %v, %v", entries, err)
+				}
+				if got, err := os.Readlink(os.Getenv("SPX_TEST_SOURCE_LINK")); err != nil || got != redirected {
+					t.Fatalf("engine probe did not change the link: %q, %v", got, err)
+				}
 			}
 			project := filepath.Join(target, "project")
 			for name, paths := range map[string][2]string{
@@ -808,24 +808,17 @@ func TestCommandsReportDeletedWorkingDirectory(t *testing.T) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Getwd in removed working directory = %v", err)
 	}
-	for _, scenario := range []string{"check project", "project paths", "project name", "command paths", "interpreted project", "interpreted session"} {
+	for _, scenario := range []string{"command paths", "interpreted project", "interpreted session"} {
 		t.Run(scenario, func(t *testing.T) {
 			target := "."
 			cmd := &CmdTool{TargetDir: target, Args: ExtraArgs{Path: &target}}
 			var err error
 			want := ""
 			switch scenario {
-			case "check project":
-				err, want = cmd.CheckEnv(), "failed to resolve target directory"
-			case "project paths":
-				err, want = cmd.setupProjectPaths("linux", "amd64"), "failed to resolve project directory"
-			case "project name":
-				err, want = cmd.updateProjectName(), "failed to resolve target directory"
 			case "command paths":
-				err, want = cmd.setupPaths("project"), "failed to resolve target directory"
+				err, want = cmd.prepareCommand(commandSpec{setup: pathSetup}, "", "project"), "failed to resolve target directory"
 			case "interpreted project":
-				_, err = cmd.interpretedRoots()
-				want = "resolve interpreted project directory"
+				err, want = cmd.prepareCommand(commandSpec{setup: interpretedSetup}, "", "project"), "failed to resolve target directory"
 			case "interpreted session":
 				cmd.TargetDir, cmd.RuntimeTempDir = root, "session"
 				_, err = cmd.interpretedRoots()
