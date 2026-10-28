@@ -853,6 +853,61 @@ func TestDownloadRuntimePackValidatesBeforeInstalling(t *testing.T) {
 	}
 }
 
+func TestDownloadRuntimePackPreservesInstalledFilesOnIOFailure(t *testing.T) {
+	for _, failure := range []string{"unreadable archive", "read-only cache", "occupied extension destination"} {
+		t.Run(failure, func(t *testing.T) {
+			env := newEngineDownloadFixture(t, "")
+			archive := filepath.Join(env.assetDir, release.RuntimeAssetZipName)
+			if err := writeZipFixture(archive, map[string]string{"gdspxrt.pck": "new pack", "runtime.gdextension": "new extension"}); err != nil {
+				t.Fatal(err)
+			}
+			pack := filepath.Join(env.goBinDir, "gdspxrttest.pck")
+			extension := filepath.Join(env.goBinDir, "runtime.gdextension")
+			if failure == "occupied extension destination" {
+				extension = filepath.Join(extension, "keep")
+			}
+			mustWriteFile(t, pack, []byte("old pack"))
+			mustWriteFile(t, extension, []byte("old extension"))
+
+			if failure != "occupied extension destination" {
+				if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+					t.Skip("requires POSIX permissions enforced for an unprivileged user")
+				}
+				path, mode := archive, os.FileMode(0)
+				if failure == "read-only cache" {
+					path, mode = env.cacheDir, 0o500
+				}
+				info, err := os.Stat(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(path, mode); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(path, info.Mode().Perm()) })
+			}
+			err := downloadRuntimePack(env)
+			if err == nil || failure != "occupied extension destination" && !errors.Is(err, os.ErrPermission) {
+				t.Fatalf("installation error = %v, want %s", err, failure)
+			}
+			for path, want := range map[string]string{pack: "old pack", extension: "old extension"} {
+				if data, err := os.ReadFile(path); err != nil || string(data) != want {
+					t.Errorf("installed asset %s = %q, %v; want %q", path, data, err, want)
+				}
+			}
+			if entries, err := os.ReadDir(env.cacheDir); err != nil || len(entries) != 0 {
+				t.Errorf("failed installation left cache files: %v, %v", entries, err)
+			}
+			if entries, err := os.ReadDir(env.goBinDir); err != nil || len(entries) != 2 {
+				t.Errorf("failed installation left destination files: %v, %v", entries, err)
+			}
+			if _, err := os.Stat(archive); err != nil {
+				t.Errorf("local source archive was removed: %v", err)
+			}
+		})
+	}
+}
+
 func TestEngineAssetEntryPointsUseLocalReleaseArtifacts(t *testing.T) {
 	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		t.Skip("release preparation fixture requires Linux or macOS")
@@ -979,23 +1034,41 @@ func TestEngineAssetEntryPointsFailBeforeInstalling(t *testing.T) {
 			})
 		}
 	}
-	t.Run("runtime pack failure", func(t *testing.T) {
-		root := isolateEngineEnvironment(t)
-		t.Setenv("PLATFORM", "linux")
-		assets := filepath.Join(root, "assets")
-		mustMkdirAll(t, assets)
-		env, err := prepareEngineDownloadEnv(root, "linux", assets, true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, name := range []string{"gdspx", "gdspxrt", "gdspxrtdbg"} {
-			mustWriteFile(t, filepath.Join(env.goBinDir, name+env.version), []byte("cached"))
-		}
-		err = DownloadEngineAssets(DownloadConfig{Runtime: true, AssetDir: assets, SameRunArtifacts: true}, root)
-		if err == nil || !strings.Contains(err.Error(), "download runtime asset bundle") || !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("runtime pack error = %v, want wrapped missing asset", err)
-		}
-	})
+	for _, sameRun := range []bool{false, true} {
+		t.Run(fmt.Sprint("missing manifest and pack/same-run=", sameRun), func(t *testing.T) {
+			root := isolateEngineEnvironment(t)
+			t.Setenv("PLATFORM", "linux")
+			assets := filepath.Join(root, "assets")
+			mustMkdirAll(t, assets)
+			env, err := prepareEngineDownloadEnv(root, "linux", assets, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"gdspx", "gdspxrt", "gdspxrtdbg"} {
+				mustWriteFile(t, filepath.Join(env.goBinDir, name+env.version), []byte("cached"))
+			}
+			preserved := map[string]string{
+				filepath.Join(env.goBinDir, "gdspxrt"+env.version+".pck"): "installed pack",
+				filepath.Join(env.goBinDir, "runtime.gdextension"):        "installed extension",
+			}
+			for path, data := range preserved {
+				mustWriteFile(t, path, []byte(data))
+			}
+			err = DownloadEngineAssets(DownloadConfig{Runtime: true, AssetDir: assets, SameRunArtifacts: sameRun}, root)
+			want := release.DefaultRuntimeLock().Manifest
+			if sameRun {
+				want = "download runtime asset bundle"
+			}
+			if err == nil || !strings.Contains(err.Error(), want) || !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("download error = %v, want missing %s", err, want)
+			}
+			for path, want := range preserved {
+				if data, err := os.ReadFile(path); err != nil || string(data) != want {
+					t.Errorf("installed asset changed: %q, %v; want %q", data, err, want)
+				}
+			}
+		})
+	}
 	t.Run("invalid environment", func(t *testing.T) {
 		root := isolateEngineEnvironment(t)
 		t.Setenv("PLATFORM", "invalid")
