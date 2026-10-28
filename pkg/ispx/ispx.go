@@ -31,13 +31,17 @@ import (
 	"github.com/goplus/spx/v4/pkg/ispx/internal/memfs"
 )
 
-var (
+// interpreterRuntime owns build admission and the lifetime of each interpreter.
+// done is nil before Run, open while running, and closed after it is consumed.
+type interpreterRuntime struct {
 	mu          sync.Mutex
-	ixgoCtx     *ixgo.Context
-	ixgoInterp  *ixgo.Interp
-	runDone     chan struct{}
+	ctx         *ixgo.Context
+	interp      *ixgo.Interp
+	done        chan struct{}
 	optimizeSSA bool
-)
+}
+
+var interpreter interpreterRuntime
 
 // initOptions controls optional interpreter initialization behavior.
 type initOptions struct {
@@ -87,10 +91,11 @@ func WithSSAOptimization() InitOption {
 //
 // If ctx.Lookup is nil, a default lookup function will be set.
 func Init(ctx *ixgo.Context, options ...InitOption) error {
-	mu.Lock()
-	defer mu.Unlock()
+	r := &interpreter
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-	if ixgoCtx != nil {
+	if r.ctx != nil {
 		panic("ispx: already initialized")
 	}
 
@@ -130,8 +135,8 @@ func XGot_Game_XGox_GetWidget[T any](sg ShapeGetter, name WidgetName) *T {
 		return fmt.Errorf("failed to register spx patch: %w", err)
 	}
 
-	ixgoCtx = ctx
-	optimizeSSA = opts.optimizeSSA
+	r.ctx = ctx
+	r.optimizeSSA = opts.optimizeSSA
 	return nil
 }
 
@@ -152,42 +157,41 @@ func ConfigureLegacyFilesystemRoots(projectDir, assetDir string) error {
 }
 
 // BuildFS builds from a borrowed file system that must remain usable while the
-// Engine can load project resources.
+// Engine can load project resources. Rebuilding stops the current Run and keeps
+// new runs and other builds out until the new interpreter is ready.
 func BuildFS(fsys fs.FS) error {
-	// Stop the game if running.
-	if err := Shutdown(); err != nil {
-		return err
-	}
+	r := &interpreter
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-	mu.Lock()
-	defer mu.Unlock()
-
-	if ixgoCtx == nil {
+	if r.ctx == nil {
 		panic("ispx: not initialized")
 	}
+	r.stopLocked()
 
 	// Release previous interpreter resources if any.
-	if ixgoInterp != nil {
-		ixgoInterp.UnsafeRelease()
-		ixgoInterp = nil
+	if r.interp != nil {
+		r.interp.UnsafeRelease()
+		r.interp = nil
 	}
+	r.done = nil
 
-	source, err := xgobuild.BuildFSDir(ixgoCtx, newXGoParserFS(fsys), ".")
+	source, err := xgobuild.BuildFSDir(r.ctx, newXGoParserFS(fsys), ".")
 	if err != nil {
 		return fmt.Errorf("failed to build XGo source: %w", err)
 	}
 
-	pkg, err := ixgoCtx.LoadFile("main.go", source)
+	pkg, err := r.ctx.LoadFile("main.go", source)
 	if err != nil {
 		return fmt.Errorf("failed to load XGo source: %w", err)
 	}
-	if optimizeSSA {
+	if r.optimizeSSA {
 		if err := transform.Transform(pkg); err != nil {
 			return fmt.Errorf("failed to transform SSA: %w", err)
 		}
 	}
 
-	interp, err := ixgoCtx.NewInterp(pkg)
+	interp, err := r.ctx.NewInterp(pkg)
 	if err != nil {
 		return fmt.Errorf("failed to create interp: %w", err)
 	}
@@ -198,59 +202,65 @@ func BuildFS(fsys fs.FS) error {
 	spxfs.RegisterSchema("", func(path string) (spxfs.Dir, error) {
 		return newSpxDir(fsys, path), nil
 	})
-	ixgoInterp = interp
+	r.interp = interp
 	return nil
 }
 
 // Run runs the interpreter. It blocks until the interpreter exits. After it
 // returns, the interpreter must be rebuilt before running again.
 func Run() (exitCode int, err error) {
-	mu.Lock()
-	if ixgoInterp == nil {
-		mu.Unlock()
-		panic("ispx: not built")
+	r := &interpreter
+	r.mu.Lock()
+	if r.interp == nil || r.done != nil {
+		message := "ispx: not built"
+		if r.runningLocked() {
+			message = "ispx: already running"
+		}
+		r.mu.Unlock()
+		panic(message)
 	}
-	if runDone != nil {
-		mu.Unlock()
-		panic("ispx: already running")
-	}
-	ctx, interp := ixgoCtx, ixgoInterp
-	runDone = make(chan struct{})
-	mu.Unlock()
+	ctx, interp := r.ctx, r.interp
+	done := make(chan struct{})
+	r.done = done
+	r.mu.Unlock()
 
-	defer func() {
-		mu.Lock()
-		close(runDone)
-		runDone = nil
-		mu.Unlock()
-	}()
-
+	// Build and Shutdown retain the lock while waiting for this run to finish.
+	defer close(done)
 	return ctx.RunInterp(interp, "main.go", nil)
 }
 
-// Shutdown requests the game to stop and waits for it to exit.
+// Shutdown requests the game to stop and waits for it to exit. It serializes
+// with builds and Run admission; it does not make a completed interpreter reusable.
 func Shutdown() error {
-	mu.Lock()
-
-	// If running, wait for it to stop.
-	for runDone != nil {
-		done := runDone
-		mu.Unlock()
-
-		engine.RequestExit(0)
-		<-done
-
-		mu.Lock()
-	}
-
-	mu.Unlock()
+	interpreter.mu.Lock()
+	defer interpreter.mu.Unlock()
+	interpreter.stopLocked()
 	return nil
 }
 
+func (r *interpreterRuntime) stopLocked() {
+	if r.runningLocked() {
+		engine.RequestExit(0)
+		<-r.done
+	}
+}
+
+func (r *interpreterRuntime) runningLocked() bool {
+	if r.done == nil {
+		return false
+	}
+	select {
+	case <-r.done:
+		return false
+	default:
+		return true
+	}
+}
+
 func configureFilesystemRoots(projectDir, assetDir string, legacy bool) error {
-	mu.Lock()
-	defer mu.Unlock()
-	if ixgoCtx != nil {
+	interpreter.mu.Lock()
+	defer interpreter.mu.Unlock()
+	if interpreter.ctx != nil {
 		return fmt.Errorf("ispx: filesystem roots must be configured before Init")
 	}
 	if legacy {

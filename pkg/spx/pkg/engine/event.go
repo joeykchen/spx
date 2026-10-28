@@ -17,122 +17,108 @@
 package engine
 
 import (
-	"sort"
+	"maps"
+	"slices"
 	"sync"
 )
 
 type Action0 func()
 
 type Event0 struct {
-	actions map[int]Action0
-	nextID  int
-	mutex   sync.Mutex
+	listeners eventListeners[Action0]
 }
 
 type Action1[T any] func(data T)
 
 type Event1[T any] struct {
-	actions map[int]Action1[T]
-	nextID  int
-	mutex   sync.Mutex
+	listeners eventListeners[Action1[T]]
 }
 
 type Action2[T1 any, T2 any] func(data1 T1, data2 T2)
 
 type Event2[T1 any, T2 any] struct {
-	actions map[int]Action2[T1, T2]
+	listeners eventListeners[Action2[T1, T2]]
+}
+
+type eventListeners[A any] struct {
+	actions map[int]A
 	nextID  int
 	mutex   sync.Mutex
 }
 
 func NewEvent0() *Event0 {
-	return &Event0{
-		actions: make(map[int]Action0),
-	}
+	return &Event0{}
 }
 
 func NewEvent1[T any]() *Event1[T] {
-	return &Event1[T]{
-		actions: make(map[int]Action1[T]),
-	}
+	return &Event1[T]{}
 }
 
 func NewEvent2[T1 any, T2 any]() *Event2[T1, T2] {
-	return &Event2[T1, T2]{
-		actions: make(map[int]Action2[T1, T2]),
-	}
+	return &Event2[T1, T2]{}
 }
 
 func (e *Event0) Subscribe(action Action0) int {
-	e.mutex.Lock()
-	defer e.mutex.Unlock()
-
-	id := e.nextID
-	e.actions[id] = action
-	e.nextID++
-
-	return id
+	return e.listeners.subscribe(action)
 }
 
 func (e *Event0) Unsubscribe(id int) {
-	e.mutex.Lock()
-	defer e.mutex.Unlock()
-
-	delete(e.actions, id)
+	e.listeners.unsubscribe(id)
 }
 
 func (e *Event0) UnsubscribeAll() {
-	e.mutex.Lock()
-	defer e.mutex.Unlock()
-	e.actions = make(map[int]Action0)
+	e.listeners.unsubscribeAll()
 }
 
 func (e *Event0) Trigger() {
-	e.mutex.Lock()
-	actions := snapshotEventActions(e.actions)
-	e.mutex.Unlock()
-	for _, action := range actions {
+	for _, action := range e.listeners.snapshot() {
 		action()
 	}
 }
 
 func (e *Event1[T]) Subscribe(action Action1[T]) int {
-	e.mutex.Lock()
-	defer e.mutex.Unlock()
-
-	id := e.nextID
-	e.actions[id] = action
-	e.nextID++
-
-	return id
+	return e.listeners.subscribe(action)
 }
 
 func (e *Event1[T]) Unsubscribe(id int) {
-	e.mutex.Lock()
-	defer e.mutex.Unlock()
-
-	delete(e.actions, id)
+	e.listeners.unsubscribe(id)
 }
 
 func (e *Event1[T]) UnsubscribeAll() {
-	e.mutex.Lock()
-	defer e.mutex.Unlock()
-	e.actions = make(map[int]Action1[T])
+	e.listeners.unsubscribeAll()
 }
 
 func (e *Event1[T]) Trigger(data T) {
-	e.mutex.Lock()
-	actions := snapshotEventActions(e.actions)
-	e.mutex.Unlock()
-	for _, action := range actions {
+	for _, action := range e.listeners.snapshot() {
 		action(data)
 	}
 }
 
 func (e *Event2[T1, T2]) Subscribe(action Action2[T1, T2]) int {
+	return e.listeners.subscribe(action)
+}
+
+func (e *Event2[T1, T2]) Unsubscribe(id int) {
+	e.listeners.unsubscribe(id)
+}
+
+func (e *Event2[T1, T2]) UnsubscribeAll() {
+	e.listeners.unsubscribeAll()
+}
+
+func (e *Event2[T1, T2]) Trigger(data1 T1, data2 T2) {
+	for _, action := range e.listeners.snapshot() {
+		action(data1, data2)
+	}
+}
+
+func (e *eventListeners[A]) subscribe(action A) int {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
+	if e.actions == nil {
+		e.actions = make(map[int]A)
+	}
 	id := e.nextID
 	e.actions[id] = action
 	e.nextID++
@@ -140,39 +126,30 @@ func (e *Event2[T1, T2]) Subscribe(action Action2[T1, T2]) int {
 	return id
 }
 
-func (e *Event2[T1, T2]) Unsubscribe(id int) {
+func (e *eventListeners[A]) unsubscribe(id int) {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
 	delete(e.actions, id)
 }
 
-func (e *Event2[T1, T2]) UnsubscribeAll() {
+func (e *eventListeners[A]) unsubscribeAll() {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
-	e.actions = make(map[int]Action2[T1, T2])
+	e.actions = nil
 }
 
-func (e *Event2[T1, T2]) Trigger(data1 T1, data2 T2) {
+// Each dispatch owns its callbacks, so nested or concurrent triggers cannot
+// change an active snapshot. Callbacks run after snapshot releases the mutex.
+func (e *eventListeners[A]) snapshot() []A {
 	e.mutex.Lock()
-	actions := snapshotEventActions(e.actions)
-	e.mutex.Unlock()
-	for _, action := range actions {
-		action(data1, data2)
-	}
-}
+	defer e.mutex.Unlock()
 
-// snapshotEventActions is called under the event's mutex. Each dispatch owns its
-// callbacks, so nested or concurrent triggers cannot change an active snapshot.
-func snapshotEventActions[T any](registered map[int]T) []T {
-	ids := make([]int, 0, len(registered))
-	for id := range registered {
-		ids = append(ids, id)
-	}
-	sort.Ints(ids)
-	actions := make([]T, 0, len(ids))
-	for _, id := range ids {
-		actions = append(actions, registered[id])
+	ids := slices.AppendSeq(make([]int, 0, len(e.actions)), maps.Keys(e.actions))
+	slices.Sort(ids)
+	actions := make([]A, len(ids))
+	for i, id := range ids {
+		actions[i] = e.actions[id]
 	}
 	return actions
 }

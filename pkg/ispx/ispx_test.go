@@ -55,22 +55,22 @@ func TestInterpreterInit(t *testing.T) {
 			if err := Init(ctx, options...); err != nil {
 				t.Fatal(err)
 			}
-			if ixgoCtx == nil || ixgoCtx.Lookup == nil || optimizeSSA != custom {
-				t.Fatalf("initialization state: context=%v, optimize=%v", ixgoCtx, optimizeSSA)
+			if interpreter.ctx == nil || interpreter.ctx.Lookup == nil || interpreter.optimizeSSA != custom {
+				t.Fatalf("initialization state: context=%v, optimize=%v", interpreter.ctx, interpreter.optimizeSSA)
 			}
 			if custom {
-				if ixgoCtx != ctx {
+				if interpreter.ctx != ctx {
 					t.Fatal("Init replaced the supplied context")
 				}
 				if dir, ok := ctx.Lookup("root", "pkg"); dir != "custom-lookup" || ok {
 					t.Fatalf("custom lookup = %q, %v", dir, ok)
 				}
 			} else if name == "missing lookup" && runtime.GOOS != "js" {
-				if dir, ok := ixgoCtx.Lookup("root", "missing"); dir != "" || ok {
+				if dir, ok := interpreter.ctx.Lookup("root", "missing"); dir != "" || ok {
 					t.Fatalf("default lookup = %q, %v", dir, ok)
 				}
 			}
-			if ixgoCtx.SourcePackage("github.com/goplus/spx/v4@patch") == nil {
+			if interpreter.ctx.SourcePackage("github.com/goplus/spx/v4@patch") == nil {
 				t.Fatal("Init did not register the generic widget patch")
 			}
 			requireInterpreterPanic(t, "ispx: already initialized", func() { _ = Init(nil) })
@@ -91,8 +91,8 @@ func TestConfigureFilesystemRoots(t *testing.T) {
 			if err := configure.call("", ""); err == nil || !strings.Contains(err.Error(), "project root is empty") {
 				t.Fatalf("empty roots = %v, want engine validation error", err)
 			}
-			ixgoCtx = &ixgo.Context{}
-			defer func() { ixgoCtx = nil }()
+			interpreter.ctx = &ixgo.Context{}
+			defer func() { interpreter.ctx = nil }()
 			if err := configure.call("/unused/project", "/unused/assets"); err == nil || !strings.Contains(err.Error(), "before Init") {
 				t.Fatalf("initialized roots = %v, want lifecycle rejection", err)
 			}
@@ -118,7 +118,7 @@ func TestInterpreterBuildMissingFunctionBody(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "failed to create interp") || !strings.Contains(err.Error(), "missing function body") {
 		t.Fatalf("Build() = %v, want missing function body error", err)
 	}
-	if ixgoInterp != nil {
+	if interpreter.interp != nil {
 		t.Fatal("failed Build published an interpreter")
 	}
 }
@@ -129,12 +129,12 @@ func TestInterpreterBuildLoadError(t *testing.T) {
 		t.Fatal(err)
 	}
 	failure := errors.New("interpreter import unavailable")
-	ixgoCtx.Importer = interpreterImportFailure{ixgoCtx.Importer, failure}
+	interpreter.ctx.Importer = interpreterImportFailure{interpreter.ctx.Importer, failure}
 	err := Build(map[string][]byte{"main.xgo": []byte("import \"fmt\"\nfunc main() { fmt.Println(42) }\n")})
 	if err == nil || !strings.Contains(err.Error(), "failed to load XGo source") || !strings.Contains(err.Error(), failure.Error()) {
 		t.Fatalf("Build() = %v, want interpreter load error", err)
 	}
-	if ixgoInterp != nil {
+	if interpreter.interp != nil {
 		t.Fatal("failed LoadFile published an interpreter")
 	}
 }
@@ -185,13 +185,14 @@ func TestInterpreterBuildRunAndRebuild(t *testing.T) {
 			if code, err := Run(); code != 0 || err != nil {
 				t.Fatalf("Run() = %d, %v", code, err)
 			}
-			if result, err := ixgoInterp.RunFunc("Result"); result != 42 || err != nil || runDone != nil {
-				t.Fatalf("completed run: result=%v, error=%v, done=%v", result, err, runDone)
+			if result, err := interpreter.interp.RunFunc("Result"); result != 42 || err != nil || interpreter.runningLocked() {
+				t.Fatalf("completed run: result=%v, error=%v, done=%v", result, err, interpreter.done)
 			}
+			requireInterpreterPanic(t, "ispx: not built", func() { _, _ = Run() })
 			if err := Build(map[string][]byte{"main.xgo": []byte("this is not valid code")}); err == nil || !strings.Contains(err.Error(), "failed to build XGo source") {
 				t.Fatalf("invalid rebuild = %v", err)
 			}
-			if ixgoInterp != nil {
+			if interpreter.interp != nil {
 				t.Fatal("failed rebuild retained the released interpreter")
 			}
 			assertResource("updated")
@@ -205,7 +206,7 @@ func TestInterpreterBuildRunAndRebuild(t *testing.T) {
 			if code, err := Run(); code != 0 || err != nil {
 				t.Fatalf("rebuilt Run() = %d, %v", code, err)
 			}
-			if result, err := ixgoInterp.RunFunc("Result"); result != 7 || err != nil {
+			if result, err := interpreter.interp.RunFunc("Result"); result != 7 || err != nil {
 				t.Fatalf("rebuilt result = %v, %v", result, err)
 			}
 		})
@@ -299,20 +300,20 @@ func (i interpreterImportFailure) Import(path string) (*types.Package, error) {
 // build. None may run in parallel with another interpreter lifecycle test.
 func isolateInterpreter(t *testing.T) {
 	t.Helper()
-	mu.Lock()
-	previousCtx, previousInterp, previousDone, previousOptimize := ixgoCtx, ixgoInterp, runDone, optimizeSSA
-	ixgoCtx, ixgoInterp, runDone, optimizeSSA = nil, nil, nil, false
-	mu.Unlock()
+	interpreter.mu.Lock()
+	previousCtx, previousInterp, previousDone, previousOptimize := interpreter.ctx, interpreter.interp, interpreter.done, interpreter.optimizeSSA
+	interpreter.ctx, interpreter.interp, interpreter.done, interpreter.optimizeSSA = nil, nil, nil, false
+	interpreter.mu.Unlock()
 	t.Cleanup(func() {
-		mu.Lock()
-		defer mu.Unlock()
-		if runDone != nil {
+		interpreter.mu.Lock()
+		defer interpreter.mu.Unlock()
+		if interpreter.runningLocked() {
 			t.Error("test left an interpreter running")
 		}
-		if ixgoInterp != nil {
-			ixgoInterp.UnsafeRelease()
+		if interpreter.interp != nil {
+			interpreter.interp.UnsafeRelease()
 		}
-		ixgoCtx, ixgoInterp, runDone, optimizeSSA = previousCtx, previousInterp, previousDone, previousOptimize
+		interpreter.ctx, interpreter.interp, interpreter.done, interpreter.optimizeSSA = previousCtx, previousInterp, previousDone, previousOptimize
 		spxfs.RegisterSchema("", asset.Open)
 	})
 }
