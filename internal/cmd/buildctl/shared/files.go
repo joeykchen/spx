@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/goplus/spx/v4/internal/base/fileutil"
 	"github.com/goplus/spx/v4/internal/base/httpclient"
 	"github.com/goplus/spx/v4/internal/runtimebundle"
 )
@@ -139,7 +140,7 @@ func DownloadURL(url, dst string, maxBytes int64, progress func(int64, int64)) (
 	}
 	file = nil
 
-	return ReplaceFile(tmpPath, dst)
+	return fileutil.ReplaceFile(tmpPath, dst)
 }
 
 func (e *HTTPStatusError) Error() string {

@@ -356,7 +356,7 @@ func persistNDKArchive(src, dst string, archive androidNDKArchive) (_ string, er
 	if err := verifyNDKArchive(tmpPath, archive); err != nil {
 		return "", err
 	}
-	if err := shared.ReplaceFile(tmpPath, dst); err != nil {
+	if err := fileutil.ReplaceFile(tmpPath, dst); err != nil {
 		return "", err
 	}
 	return dst, nil

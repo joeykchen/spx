@@ -70,7 +70,7 @@ func fetchEngineAsset(env engineDownloadEnv, name, dst string) error {
 			return err
 		}
 	}
-	return shared.ReplaceFile(tmpPath, dst)
+	return fileutil.ReplaceFile(tmpPath, dst)
 }
 
 func setLocalAssetDir(env *engineDownloadEnv, repoRoot, assetDir string, allowMissingManifest bool) error {
@@ -234,7 +234,7 @@ func copyEngineAssetAtomically(src, dst string) (err error) {
 		return err
 	}
 	output = nil
-	return shared.ReplaceFile(tmpPath, dst)
+	return fileutil.ReplaceFile(tmpPath, dst)
 }
 
 func linkOrCopyFile(src, dst string) error {

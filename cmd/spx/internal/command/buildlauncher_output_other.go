@@ -52,8 +52,3 @@ func launcherOutputAliasAllowed(existing, resolved string) bool {
 func launcherStageIsExecutable(info os.FileInfo) bool {
 	return info.Mode().Perm()&0o111 != 0 && info.Size() > 0
 }
-
-// The stage and destination share a filesystem, so rename is atomic.
-func commitLauncherOutputPlatform(stage, final string) error {
-	return os.Rename(stage, final)
-}
