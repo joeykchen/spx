@@ -25,7 +25,6 @@ import (
 
 	"github.com/goplus/spx/v4/internal/projectassets"
 	"github.com/goplus/spx/v4/internal/projectbundle"
-	"github.com/goplus/spx/v4/internal/projectpolicy"
 )
 
 func collectProjectAllowlist(cfg Config) ([]string, error) {
@@ -87,16 +86,16 @@ func topLevelProjectName(projectDir, projectFile string) (string, error) {
 	return rel, nil
 }
 
-func prepareProjectBundleConfig(cfg Config, snapshot projectpolicy.PortableConfigSnapshot) (projectbundle.Config, error) {
+func prepareProjectBundleConfig(cfg Config) (projectbundle.Config, error) {
 	files, err := collectProjectAllowlist(cfg)
 	if err != nil {
 		return projectbundle.Config{}, err
 	}
-	if err := snapshot.Verify(cfg.ProjectDir); err != nil {
+	if err := cfg.PortableConfig.Verify(cfg.ProjectDir); err != nil {
 		return projectbundle.Config{}, fmt.Errorf("launchpack: %w", err)
 	}
 	return projectbundle.Config{ProjectDir: cfg.ProjectDir, ProjectFiles: files,
-		IncludeConfig: snapshot.Present(), ConfigBytes: snapshot.Bytes(), PackDir: cfg.PackDir,
+		IncludeConfig: cfg.PortableConfig.Present(), ConfigBytes: cfg.PortableConfig.Bytes(), PackDir: cfg.PackDir,
 		Output: cfg.Output}, nil
 }
 
