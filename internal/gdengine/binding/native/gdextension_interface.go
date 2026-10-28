@@ -71,7 +71,7 @@ static inline GdArray createArrayInfo(int type, int size){
 }
 static inline void freeArrayInfo(GdArray arrayInfo) {
     if (arrayInfo == NULL) return;
-    if (arrayInfo->type == 4  && arrayInfo->data != NULL) {//ARRAY_TYPE_STRING
+    if (arrayInfo->type == GD_ARRAY_TYPE_STRING && arrayInfo->data != NULL) {
         char** stringData = (char**)arrayInfo->data;
         for (int i = 0; i < arrayInfo->size; i++) {
             free(stringData[i]);
@@ -139,13 +139,13 @@ type GdArray C.GdArray
 
 // Array type constants
 const (
-	ArayTypeUnknown = 0
-	ArrayTypeInt64  = 1
-	ArrayTypeFloat  = 2
-	ArrayTypeBool   = 3
-	ArrayTypeString = 4
-	ArrayTypeByte   = 5
-	ArrayTypeGdObj  = 6
+	ArayTypeUnknown = C.GD_ARRAY_TYPE_UNKNOWN
+	ArrayTypeInt64  = C.GD_ARRAY_TYPE_INT64
+	ArrayTypeFloat  = C.GD_ARRAY_TYPE_FLOAT
+	ArrayTypeBool   = C.GD_ARRAY_TYPE_BOOL
+	ArrayTypeString = C.GD_ARRAY_TYPE_STRING
+	ArrayTypeByte   = C.GD_ARRAY_TYPE_BYTE
+	ArrayTypeGdObj  = C.GD_ARRAY_TYPE_GDOBJ
 )
 
 // IArrayInfo interface for unified array operations
@@ -171,23 +171,11 @@ type GDExtensionSpxCallbackInfoPtr C.GDExtensionSpxCallbackInfoPtr
 
 type SpxCallbackInfo C.SpxCallbackInfo
 
-type GDExtensionVariantPtr C.GDExtensionVariantPtr
-
-type GDExtensionConstVariantPtr C.GDExtensionConstVariantPtr
-
-type GDExtensionUninitializedVariantPtr C.GDExtensionUninitializedVariantPtr
-
 type GDExtensionStringNamePtr C.GDExtensionStringNamePtr
 
 type GDExtensionConstStringNamePtr C.GDExtensionConstStringNamePtr
 
 type GDExtensionUninitializedStringNamePtr C.GDExtensionUninitializedStringNamePtr
-
-type GDExtensionStringPtr C.GDExtensionStringPtr
-
-type GDExtensionConstStringPtr C.GDExtensionConstStringPtr
-
-type GDExtensionUninitializedStringPtr C.GDExtensionUninitializedStringPtr
 
 type GDExtensionObjectPtr C.GDExtensionObjectPtr
 
@@ -212,55 +200,6 @@ type GDObjectInstanceID C.GDObjectInstanceID
 type GDExtensionRefPtr C.GDExtensionRefPtr
 
 type GDExtensionConstRefPtr C.GDExtensionConstRefPtr
-
-type GDExtensionPtrConstructor C.GDExtensionPtrConstructor
-
-type GDExtensionPtrDestructor C.GDExtensionPtrDestructor
-
-type GDExtensionVariantType C.GDExtensionVariantType
-
-const (
-	GDEXTENSION_VARIANT_TYPE_NIL GDExtensionVariantType = iota
-	GDEXTENSION_VARIANT_TYPE_BOOL
-	GDEXTENSION_VARIANT_TYPE_INT
-	GDEXTENSION_VARIANT_TYPE_FLOAT
-	GDEXTENSION_VARIANT_TYPE_STRING
-	GDEXTENSION_VARIANT_TYPE_VECTOR2
-	GDEXTENSION_VARIANT_TYPE_VECTOR2I
-	GDEXTENSION_VARIANT_TYPE_RECT2
-	GDEXTENSION_VARIANT_TYPE_RECT2I
-	GDEXTENSION_VARIANT_TYPE_VECTOR3
-	GDEXTENSION_VARIANT_TYPE_VECTOR3I
-	GDEXTENSION_VARIANT_TYPE_TRANSFORM2D
-	GDEXTENSION_VARIANT_TYPE_VECTOR4
-	GDEXTENSION_VARIANT_TYPE_VECTOR4I
-	GDEXTENSION_VARIANT_TYPE_PLANE
-	GDEXTENSION_VARIANT_TYPE_QUATERNION
-	GDEXTENSION_VARIANT_TYPE_AABB
-	GDEXTENSION_VARIANT_TYPE_BASIS
-	GDEXTENSION_VARIANT_TYPE_TRANSFORM3D
-	GDEXTENSION_VARIANT_TYPE_PROJECTION
-	GDEXTENSION_VARIANT_TYPE_COLOR
-	GDEXTENSION_VARIANT_TYPE_STRING_NAME
-	GDEXTENSION_VARIANT_TYPE_NODE_PATH
-	GDEXTENSION_VARIANT_TYPE_RID
-	GDEXTENSION_VARIANT_TYPE_OBJECT
-	GDEXTENSION_VARIANT_TYPE_CALLABLE
-	GDEXTENSION_VARIANT_TYPE_SIGNAL
-	GDEXTENSION_VARIANT_TYPE_DICTIONARY
-	GDEXTENSION_VARIANT_TYPE_ARRAY
-	GDEXTENSION_VARIANT_TYPE_PACKED_BYTE_ARRAY
-	GDEXTENSION_VARIANT_TYPE_PACKED_INT32_ARRAY
-	GDEXTENSION_VARIANT_TYPE_PACKED_INT64_ARRAY
-	GDEXTENSION_VARIANT_TYPE_PACKED_FLOAT32_ARRAY
-	GDEXTENSION_VARIANT_TYPE_PACKED_FLOAT64_ARRAY
-	GDEXTENSION_VARIANT_TYPE_PACKED_STRING_ARRAY
-	GDEXTENSION_VARIANT_TYPE_PACKED_VECTOR2_ARRAY
-	GDEXTENSION_VARIANT_TYPE_PACKED_VECTOR3_ARRAY
-	GDEXTENSION_VARIANT_TYPE_PACKED_COLOR_ARRAY
-	GDEXTENSION_VARIANT_TYPE_PACKED_VECTOR4_ARRAY
-	GDEXTENSION_VARIANT_TYPE_VARIANT_MAX
-)
 
 type GDExtensionInitializationLevel int64
 
@@ -585,7 +524,6 @@ func copyString(val GdString) string {
 }
 
 func doInitialization(init *initialization) {
-	stringInitConstructorBindings()
 	C.initialization(init)
 }
 

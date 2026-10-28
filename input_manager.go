@@ -210,7 +210,3 @@ func (p *inputManager) onLeftButtonUp(point mathf.Vec2) {
 		p.g.scriptEvents.doWhenSwipe(Direction(result.Direction), p.g)
 	}
 }
-
-func (p *inputManager) onMouseMove(mathf.Vec2) {
-	p.swipe.Expire()
-}

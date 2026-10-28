@@ -94,6 +94,10 @@ func TestJSFunctionArgsSkipsArrayLengthArgument(t *testing.T) {
 
 	metadata.ArrayBridges = map[string]common.ArrayBridge{"GDExtensionSpxSpriteBatchUpdateTransforms": {
 		FunctionName: "GDExtensionSpxSpriteBatchUpdateTransforms",
+		Arguments: []common.CParam{
+			{CType: "const float *", Name: "buffer_data"},
+			{CType: "int", Name: "len"},
+		},
 		Buffers: []common.ArrayBuffer{{
 			Data:   common.CParam{CType: "const float *", Name: "buffer_data"},
 			Length: common.CParam{CType: "int", Name: "len"}, Type: 2,
@@ -224,6 +228,8 @@ public:
  SPX_BIND GdBool try_write(SPX_OUT float out[3]);
  SPX_BIND void update_fixed(float out[3]);
  SPX_BIND void update_values(const float *values, int count);
+ SPX_BIND void read_channel(int channel, SPX_OUT float out[3]);
+ SPX_BIND void read_channel_last(SPX_OUT float out[3], int channel);
  };`
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "spx_example_mgr.h"), []byte(header), 0o600))
 	headers, err := gdext.PrepareHeaders(dir)
@@ -231,7 +237,9 @@ public:
 	ast, err := clang.ParseCString(`typedef void (*GDExtensionSpxExampleWriteValues)(int64_t *out);
 typedef void (*GDExtensionSpxExampleUpdateValues)(const float *values, int count);
 typedef GdBool (*GDExtensionSpxExampleTryWrite)(float *out);
-typedef void (*GDExtensionSpxExampleUpdateFixed)(float *out);`)
+typedef void (*GDExtensionSpxExampleUpdateFixed)(float *out);
+typedef void (*GDExtensionSpxExampleReadChannel)(int channel, float *out);
+typedef void (*GDExtensionSpxExampleReadChannelLast)(float *out, int channel);`)
 	require.NoError(t, err)
 	generation := &Generator{Output: &common.OutputPlan{}, GenerationContext: common.NewGenerationContext(ast, headers.Metadata)}
 	require.NoError(t, generation.renderEngineJS(dir))
@@ -244,6 +252,8 @@ typedef void (*GDExtensionSpxExampleUpdateFixed)(float *out);`)
 	require.NotContains(t, string(output), "'gdspx_example_update_values':")
 	require.NotContains(t, string(output), "'gdspx_example_try_write': function()")
 	require.NotContains(t, string(output), "'gdspx_example_update_fixed': function()")
+	require.NotContains(t, string(output), "'gdspx_example_read_channel': function()")
+	require.NotContains(t, string(output), "'gdspx_example_read_channel_last': function()")
 	require.Contains(t, string(output), `RequireNativeArray(out, "gdspx_example_write_values", 1, true)`)
 	require.Contains(t, string(output), "NativeArrayCount(out) !== 7")
 	require.Contains(t, string(output), "_call(_arg0);")
@@ -253,6 +263,24 @@ typedef void (*GDExtensionSpxExampleUpdateFixed)(float *out);`)
 	require.Contains(t, body, "if out == nil")
 	require.Contains(t, body, "JsAllocNativeArray(GdArrayTypeInt64, len(out[:]))")
 	require.Contains(t, body, "CopyNativeArrayOutput(out[:], arg0)")
+	for _, tt := range []struct {
+		name      string
+		arguments []common.CParam
+		jsArgs    []string
+		call      string
+	}{
+		{"GDExtensionSpxExampleReadChannel", []common.CParam{{CType: "int", Name: "channel"}, {CType: "float *", Name: "out"}}, []string{"channel", "out"}, "_call(channel, _arg1);"},
+		{"GDExtensionSpxExampleReadChannelLast", []common.CParam{{CType: "float *", Name: "out"}, {CType: "int", Name: "channel"}}, []string{"out", "channel"}, "_call(_arg0, channel);"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := headers.Metadata.ArrayBridges[tt.name]
+			require.Equal(t, tt.arguments, spec.Arguments)
+			require.Nil(t, spec.FixedOutput(), "a scalar input prevents a no-argument output reader")
+			function := arrayFunction(t, tt.name, spec)
+			require.Equal(t, tt.jsArgs, generation.jsArgs(function))
+			require.Contains(t, generation.jsBody(function), tt.call)
+		})
+	}
 }
 
 func TestJSFunctionBodyValidatesNativeArray(t *testing.T) {
@@ -260,6 +288,10 @@ func TestJSFunctionBodyValidatesNativeArray(t *testing.T) {
 
 	metadata.ArrayBridges = map[string]common.ArrayBridge{"GDExtensionSpxSpriteBatchUpdateTransforms": {
 		FunctionName: "GDExtensionSpxSpriteBatchUpdateTransforms",
+		Arguments: []common.CParam{
+			{CType: "const float *", Name: "buffer_data"},
+			{CType: "int", Name: "len"},
+		},
 		Buffers: []common.ArrayBuffer{{
 			Data:   common.CParam{CType: "const float *", Name: "buffer_data"},
 			Length: common.CParam{CType: "int", Name: "len"}, Type: 2,
@@ -722,7 +754,7 @@ func TestJSScalarInputsPassByValueAndKeepOutputPointers(t *testing.T) {
 func arrayFunction(t *testing.T, name string, spec common.ArrayBridge) *clang.TypedefFunction {
 	t.Helper()
 	var params []string
-	for _, param := range spec.Params() {
+	for _, param := range spec.Arguments {
 		params = append(params, param.Declaration())
 	}
 	ast, err := clang.ParseCString("typedef void (*" + name + ")(" + strings.Join(params, ", ") + ");")

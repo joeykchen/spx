@@ -63,60 +63,6 @@ static void reset_allocator(void) {
 	release_count = 0;
 }
 
-// These callbacks exercise the ABI only; they do not implement Godot objects.
-static void default_constructor(GDExtensionUninitializedTypePtr base, const GDExtensionConstTypePtr *args) {
-	*(int64_t *)base = args == NULL ? 71 : -71;
-}
-
-static void argument_constructor(GDExtensionUninitializedTypePtr base, const GDExtensionConstTypePtr *args) {
-	*(int64_t *)base = 10 * *(const int64_t *)args[0] + *(const int64_t *)args[1];
-}
-
-static void destructor(GDExtensionTypePtr base) {
-	*(int64_t *)base = -99;
-}
-
-static GDExtensionPtrConstructor get_constructor(GDExtensionVariantType type, int32_t index) {
-	if (type != GDEXTENSION_VARIANT_TYPE_STRING) return NULL;
-	if (index == 0) return default_constructor;
-	if (index == 1) return argument_constructor;
-	return NULL;
-}
-
-static GDExtensionPtrDestructor get_destructor(GDExtensionVariantType type) {
-	return type == GDEXTENSION_VARIANT_TYPE_STRING ? destructor : NULL;
-}
-
-// A tagged byte buffer makes swapped Latin-1/UTF-8 bindings observable.
-// Tests supply enough destination storage for their small input strings.
-static void new_latin1(GDExtensionUninitializedStringPtr dest, const char *contents) {
-	((char *)dest)[0] = 'L';
-	strcpy((char *)dest + 1, contents);
-}
-
-static void new_utf8(GDExtensionUninitializedStringPtr dest, const char *contents) {
-	((char *)dest)[0] = 'U';
-	strcpy((char *)dest + 1, contents);
-}
-
-static GDExtensionInt read_string(GDExtensionConstStringPtr self, char *text, GDExtensionInt max_length, char tag) {
-	if (((const char *)self)[0] != tag) return -1;
-	const char *contents = (const char *)self + 1;
-	GDExtensionInt length = strlen(contents);
-	if (text != NULL && max_length > 0) {
-		memcpy(text, contents, max_length < length ? max_length : length);
-	}
-	return length;
-}
-
-static GDExtensionInt to_latin1(GDExtensionConstStringPtr self, char *text, GDExtensionInt max_length) {
-	return read_string(self, text, max_length, 'L');
-}
-
-static GDExtensionInt to_utf8(GDExtensionConstStringPtr self, char *text, GDExtensionInt max_length) {
-	return read_string(self, text, max_length, 'U');
-}
-
 static SpxCallbackInfo registered_callbacks;
 static int registration_count;
 static int registration_nonnull;
@@ -156,21 +102,32 @@ static int invoke_callbacks(GdObj object, GdInt other, GdFloat delta, GdBool fla
 	return calls;
 }
 
+static void is_main_thread(GdBool *result) { *result = 1; }
+
+// Startup succeeds with only SPX ABI entries; legacy String/Variant symbols
+// deliberately remain unresolved.
 static GDExtensionInterfaceFunctionPtr resolve_builtin(const char *name) {
 #define RESOLVE(symbol, fn) if (strcmp(name, symbol) == 0) return (GDExtensionInterfaceFunctionPtr)fn
 	RESOLVE("spx_global_register_callbacks", register_callbacks);
 	RESOLVE("spx_global_free_string", release_string);
-	RESOLVE("string_new_with_latin1_chars", new_latin1);
-	RESOLVE("string_new_with_utf8_chars", new_utf8);
-	RESOLVE("string_to_latin1_chars", to_latin1);
-	RESOLVE("string_to_utf8_chars", to_utf8);
-	RESOLVE("variant_get_ptr_constructor", get_constructor);
-	RESOLVE("variant_get_ptr_destructor", get_destructor);
+	RESOLVE("spx_platform_is_main_thread", is_main_thread);
 #undef RESOLVE
 	return NULL;
 }
 
 static GDExtensionInterfaceGetProcAddress builtin_resolver(void) { return resolve_builtin; }
+
+static GDExtensionInterfaceFunctionPtr resolve_without_main_thread(const char *name) {
+	if (strcmp(name, "spx_platform_is_main_thread") == 0) return NULL;
+	return resolve_builtin(name);
+}
+
+static GDExtensionInterfaceGetProcAddress resolver_without_main_thread(void) { return resolve_without_main_thread; }
+
+static void invoke_lifecycle(GDExtensionInitialization *config, int level, int initializing) {
+	if (initializing) config->initialize(config->userdata, (GDExtensionInitializationLevel)level);
+	else config->deinitialize(config->userdata, (GDExtensionInitializationLevel)level);
+}
 */
 import "C"
 
@@ -199,6 +156,18 @@ func Reset() {
 
 func Resolver() unsafe.Pointer {
 	return unsafe.Pointer(C.builtin_resolver())
+}
+
+func ResolverWithoutMainThread() unsafe.Pointer {
+	return unsafe.Pointer(C.resolver_without_main_thread())
+}
+
+func InvokeLifecycle(config unsafe.Pointer, level int, initializing bool) {
+	var start C.int
+	if initializing {
+		start = 1
+	}
+	C.invoke_lifecycle((*C.GDExtensionInitialization)(config), C.int(level), start)
 }
 
 func RegistrationCount() int {

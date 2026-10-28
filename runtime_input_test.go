@@ -17,6 +17,7 @@
 package spx
 
 import (
+	"fmt"
 	"runtime"
 	"slices"
 	"sync"
@@ -491,6 +492,55 @@ func TestMouseCoordinatesUseLatestLiveInput(t *testing.T) {
 	}
 }
 
+func TestInputFrameExpiresStationarySwipeAfterClockAdvance(t *testing.T) {
+	for _, prepared := range []bool{false, true} {
+		t.Run(fmt.Sprint("prepared=", prepared), func(t *testing.T) {
+			_, game, _ := setupInputSourceTest(t)
+			now := time.Unix(100, 0)
+			game.inputMgr.swipe.InitWithClock(func() time.Time { return now })
+			game.inputMgr.swipe.Begin(mathf.Vec2{}, nil)
+			if prepared && !game.inputMgr.prepareInputFrame(0.6) {
+				t.Fatal("stationary frame was not prepared")
+			}
+			now = now.Add(600 * time.Millisecond)
+			game.dispatchFrameEvents()
+			// Correcting the clock must not revive a gesture expired by a real frame.
+			// With no frame, dispatch must leave the gesture alone.
+			now = now.Add(-500 * time.Millisecond)
+			if _, _, ok := game.inputMgr.swipe.Finish(mathf.Vec2{X: 100}); ok == prepared {
+				t.Fatalf("swipe survived = %v, prepared frame = %v", ok, prepared)
+			}
+		})
+	}
+}
+
+func TestInputFrameSwipePreservesReplayClockRollback(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		frameTime float64
+		want      bool
+	}{
+		{"backward frame retains gesture", 0.9, true},
+		{"expired frame cannot revive gesture", 1.6, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, game, _ := setupInputSourceTest(t)
+			session := &inputSession{currentTime: 1}
+			game.inputMgr.swipe.InitWithClock(session.logicalClock)
+			game.inputMgr.swipe.Begin(mathf.Vec2{}, nil)
+			if !game.inputMgr.prepareInputFrame(0.1) {
+				t.Fatal("stationary frame was not prepared")
+			}
+			session.currentTime = test.frameTime
+			game.dispatchFrameEvents()
+			session.currentTime = 1.1
+			if _, _, ok := game.inputMgr.swipe.Finish(mathf.Vec2{X: 100}); ok != test.want {
+				t.Fatalf("swipe after clock correction = %v, want %v", ok, test.want)
+			}
+		})
+	}
+}
+
 func TestSwipeRoutingAllowsHandlerToBeginNextGesture(t *testing.T) {
 	previous := gco
 	gco = nil
@@ -577,7 +627,7 @@ func TestSwipeRoutingIgnoresFailedAndExpiredGestures(t *testing.T) {
 				game.inputMgr.swipe.Begin(mathf.Vec2{}, target)
 				now = now.Add(tt.elapsed)
 				if tt.expire {
-					game.inputMgr.onMouseMove(mathf.Vec2{X: 50})
+					game.inputMgr.swipe.Expire()
 					now = now.Add(-500 * time.Millisecond)
 				}
 				game.inputMgr.onLeftButtonUp(mathf.Vec2{X: tt.distance})

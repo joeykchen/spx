@@ -19,6 +19,7 @@
 package ui
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/goplus/spbase/mathf"
@@ -38,6 +39,7 @@ type uiLifecycleMgr struct {
 	next     gdx.Object
 	prefabs  map[gdx.Object]string
 	bindings map[gdx.Object]uiLifecycleBinding
+	monitor  *monitorRenderSpy
 }
 
 type uiLifecyclePlatform struct{ gdx.IPlatformMgr }
@@ -112,46 +114,79 @@ func TestUIPrefabsBindChildrenBeforeFirstUse(t *testing.T) {
 }
 
 func TestUiMonitorFactoryInitializesFirstRender(t *testing.T) {
-	mgr := setupUILifecycle(t)
-
-	panel := NewUiMonitor()
-	if mgr.prefabs[panel.GetId()] != "res://engine/ui/UiMonitor.tscn" || gdx.UiNodes()[panel.GetId()] != panel {
-		t.Fatal("monitor factory did not create and register its prefab")
-	}
-	if panel.active != monitorAppearanceCount {
-		t.Fatal("new monitor already has an active view")
-	}
-	if _, changed := panel.ReadSliderChange(); changed {
-		t.Fatal("new monitor reported slider input before first render")
-	}
-	for i, spec := range monitorViewSpecs {
-		view := panel.views[i]
-		for _, child := range []struct {
-			path string
-			node *UiNode
-		}{{spec.root, view.root}, {spec.label, view.label}, {spec.value, view.value}, {spec.colorTarget, view.colorTarget}, {spec.input, view.input}} {
-			if child.path == "" {
-				if child.node != nil {
-					t.Fatal("optional monitor node unexpectedly bound")
+	for appearance := MonitorAppearanceDefault; appearance < monitorAppearanceCount; appearance++ {
+		spec := monitorViewSpecs[appearance]
+		t.Run(spec.root, func(t *testing.T) {
+			mgr := setupUILifecycle(t)
+			engine.SetWindowScale(1)
+			style := MonitorStyle{
+				Appearance: appearance, Label: "score", Color: mathf.NewColorRGBAi(255, 128, 64, 255),
+				Dimensions: mathf.NewVec2(140, 240), Slider: MonitorSlider{-1, 100, 0.01},
+			}
+			panel := NewUiMonitor(style)
+			if mgr.prefabs[panel.GetId()] != "res://engine/ui/UiMonitor.tscn" || gdx.UiNodes()[panel.GetId()] != panel {
+				t.Fatal("monitor factory did not create and register its prefab")
+			}
+			if _, changed := panel.ReadSliderChange(); changed {
+				t.Fatal("constructor reported slider input before the first render")
+			}
+			bound := make(map[string]gdx.Object)
+			for id, binding := range mgr.bindings {
+				if binding.parent != panel.GetId() || gdx.UiNodes()[id] == nil {
+					t.Fatalf("unregistered monitor child: %+v", binding)
 				}
-				continue
+				bound[binding.path] = id
 			}
-			if child.node == nil || mgr.bindings[child.node.GetId()] != (uiLifecycleBinding{panel.GetId(), child.path}) {
-				t.Fatalf("monitor child %q was not bound to its prefab", child.path)
+			wantBindings := 0
+			for _, path := range []string{spec.root, spec.label, spec.value, spec.colorTarget, spec.input} {
+				if path != "" {
+					wantBindings++
+					if bound[path] == 0 {
+						t.Fatalf("monitor child %q was not bound", path)
+					}
+				}
 			}
-		}
-	}
-
-	panel.Render(MonitorStyle{Label: "score"}, MonitorValue{Text: "42"})
-	for i, view := range panel.views {
-		visible, set := mgr.visible[view.root.GetId()]
-		if !set || visible != (MonitorAppearance(i) == MonitorAppearanceDefault) {
-			t.Fatalf("first render did not set view %d visibility", i)
-		}
-	}
-	view := panel.views[MonitorAppearanceDefault]
-	if mgr.text[view.label.GetId()] != "score" || mgr.text[view.value.GetId()] != "42" {
-		t.Fatal("first monitor render lost its label or value")
+			if len(bound) != wantBindings || !mgr.visible[bound[spec.root]] {
+				t.Fatalf("selected view bindings/visibility = %v/%v", bound, mgr.visible)
+			}
+			if spec.label != "" && mgr.text[bound[spec.label]] != style.Label || spec.colorTarget != "" && mgr.colors[bound[spec.colorTarget]] != style.Color {
+				t.Fatal("constructor lost the fixed label or color")
+			}
+			panel.UpdateScale(1.5)
+			panel.UpdatePos(mathf.NewVec2(10, 20))
+			assertVec2Near(t, "monitor scale", mgr.scales[panel.GetId()], mathf.NewVec2(1.5, 1.5))
+			assertVec2Near(t, "monitor position", mgr.positions[panel.GetId()], mathf.NewVec2(240, 140))
+			value := MonitorValue{Text: "42", Items: []string{"first", "second"}}
+			panel.Render(value)
+			if appearance == MonitorAppearanceList {
+				id := bound[spec.root]
+				if mgr.sizes[id] != style.Dimensions || mgr.monitor.text[id] != style.Label || mgr.monitor.color[id] != style.Color || !slices.Equal(mgr.monitor.items[id], value.Items) {
+					t.Fatal("list factory lost style or initial items")
+				}
+				value.Items[0] = "changed"
+				panel.Render(value)
+				if !slices.Equal(mgr.monitor.items[id], value.Items) || mgr.monitor.listCalls != 3 {
+					t.Fatal("list refresh missed the changed source items")
+				}
+			} else if mgr.text[bound[spec.value]] != value.Text {
+				t.Fatal("first monitor render lost its value")
+			}
+			if appearance == MonitorAppearanceSlider {
+				if _, changed := panel.ReadSliderChange(); changed {
+					t.Fatal("rendered slider value was reported as user input")
+				}
+				mgr.monitor.ranges[bound[spec.input]] = 43
+				if value, changed := panel.ReadSliderChange(); !changed || value != 43 {
+					t.Fatalf("slider input = %v/%v, want 43/true", value, changed)
+				}
+			}
+			for _, visible := range []bool{true, false, true} {
+				panel.SetVisible(visible)
+				if mgr.visible[panel.GetId()] != visible || !mgr.visible[bound[spec.root]] {
+					t.Fatal("visibility update changed the selected view")
+				}
+			}
+		})
 	}
 }
 
@@ -211,12 +246,29 @@ func (m *uiLifecycleMgr) BindNode(parent gdx.Object, path string) gdx.Object {
 	return m.next
 }
 
+func (m *uiLifecycleMgr) SetListItems(id gdx.Object, name string, items engine.Array, color mathf.Color) {
+	m.monitor.SetListItems(id, name, items, color)
+}
+
+func (m *uiLifecycleMgr) SetRange(id gdx.Object, min, max, step, value float64) {
+	m.monitor.SetRange(id, min, max, step, value)
+}
+
+func (m *uiLifecycleMgr) GetRangeValue(id gdx.Object) float64 { return m.monitor.GetRangeValue(id) }
+
+func (*uiLifecycleMgr) GetCanvasScale(gdx.Object) mathf.Vec2 { return mathf.NewVec2(1, 1) }
+
+func (m *uiLifecycleMgr) SetTextMaxWidth(id gdx.Object, text string, width float64) float64 {
+	m.text[id] = text
+	return m.monitor.SetTextMaxWidth(id, text, width)
+}
+
 func (uiLifecyclePlatform) IsMainThread() bool { return true }
 
 func setupUILifecycle(t *testing.T) *uiLifecycleMgr {
 	t.Helper()
 	mgr := &uiLifecycleMgr{
-		uiRenderSpy: setupUIRendering(t), next: 100000,
+		uiRenderSpy: setupUIRendering(t), next: 100000, monitor: newMonitorRenderSpy(),
 		prefabs: make(map[gdx.Object]string), bindings: make(map[gdx.Object]uiLifecycleBinding),
 	}
 	for id := range gdx.UiNodes() {

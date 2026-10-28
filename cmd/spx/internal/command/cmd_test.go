@@ -21,6 +21,7 @@ import (
 	"embed"
 	"errors"
 	"flag"
+	"go/build"
 	"io"
 	"os"
 	"os/exec"
@@ -131,16 +132,23 @@ func TestRunCmdHelpSkipsProjectSetup(t *testing.T) {
 		{"short help", []string{"spx", "-h"}},
 		{"command help", []string{"spx", "build", "-h"}},
 		{"version", []string{"spx", "version"}},
+		{"help with invalid path", []string{"spx", "help", "--path", "invalid\x00path"}},
+		{"version with invalid path", []string{"spx", "version", "--path", "invalid\x00path"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			t.Chdir(root)
+			t.Setenv("GOPATH", "")
 			setTestCommandLine(t, tt.args...)
 
 			cmd := &CmdTool{}
 			if err := cmd.RunCmd("spx", ".spx", "test", embed.FS{}, "", "project"); err != nil {
 				t.Fatalf("RunCmd(%v): %v", tt.args, err)
+			}
+			wantBin, err := filepath.Abs(filepath.Join(filepath.SplitList(build.Default.GOPATH)[0], "bin"))
+			if err != nil || cmd.GoBinPath != wantBin {
+				t.Fatalf("default Go binary path = %q, want %q (%v)", cmd.GoBinPath, wantBin, err)
 			}
 			if cmd.ProjectDir != "" || cmd.TargetDir != "" {
 				t.Fatalf("help prepared a project: ProjectDir=%q TargetDir=%q", cmd.ProjectDir, cmd.TargetDir)
@@ -580,7 +588,8 @@ func TestInitCreatesProjectScaffold(t *testing.T) {
 			}
 			const module = "module example.com/new-game\n\ngo 1.23\n"
 			cmd := &CmdTool{Args: ExtraArgs{Path: &target}, GoModTemplate: module}
-			if err := cmd.Init(); err != nil {
+			spec, _ := findCommand("init")
+			if err := cmd.dispatch(spec, "", "project"); err != nil {
 				t.Fatal(err)
 			}
 			if got := readTestFile(t, filepath.Join(projectDir, "go.mod")); got != module {
@@ -619,7 +628,8 @@ func TestInitReportsScaffoldWriteFailures(t *testing.T) {
 				t.Fatal(err)
 			}
 			cmd := &CmdTool{Args: ExtraArgs{Path: &target}, GoModTemplate: "module example.com/new-game\n"}
-			if err := cmd.Init(); err == nil || !strings.Contains(err.Error(), tt.want) {
+			spec, _ := findCommand("init")
+			if err := cmd.dispatch(spec, "", "project"); err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("Init error = %v, want %q", err, tt.want)
 			}
 			if tt.file && readTestFile(t, blocked) != "occupied" {
@@ -675,7 +685,7 @@ func TestEngineCommandsUseGeneratedProjectDirectory(t *testing.T) {
 				t.Fatal(err)
 			}
 			before := workingDirectory(t)
-			if err := cmd.setupPaths("generated project"); err != nil {
+			if err := cmd.prepareCommand(commandSpec{setup: pathSetup}, "", "generated project"); err != nil {
 				t.Fatal(err)
 			}
 			if command == "editor" {

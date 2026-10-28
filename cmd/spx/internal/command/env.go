@@ -18,7 +18,6 @@ package command
 
 import (
 	"context"
-	"embed"
 	"errors"
 	"fmt"
 	"os"
@@ -44,24 +43,15 @@ var projectNameReplacer = strings.NewReplacer("_", "", " ", "", "\"", "", "\n", 
 
 // CheckEnv validates the target directory.
 func (cmd *CmdTool) CheckEnv() error {
-	dir, err := filepath.Abs(cmd.TargetDir)
-	if err != nil {
-		return fmt.Errorf("failed to resolve target directory path: %w", err)
-	}
-
-	exist := util.CheckFileExist(dir, cmd.FileSuffix, false)
+	exist := util.CheckFileExist(cmd.TargetDir, cmd.FileSuffix, false)
 	if !exist {
 		return fmt.Errorf("cannot find %s file, not a valid project directory", cmd.FileSuffix)
 	}
 	return nil
 }
 
-// SetupEnv prepares command state.
-func (cmd *CmdTool) SetupEnv(version string, fs embed.FS, fsRelDir string, projectRelPath string) error {
-	cmd.ProjectFS = fs
-	cmd.Version = version
-	cmd.ProjectRelPath = projectRelPath
-
+// setupEnv prepares build state using the paths resolved by prepareCommand.
+func (cmd *CmdTool) setupEnv(fsRelDir string) error {
 	goos, goarch, err := resolveTargetPlatform()
 	if err != nil {
 		return err
@@ -157,11 +147,8 @@ func (cmd *CmdTool) ClearBuild() error {
 	return nil
 }
 
-// setupPaths resolves command paths and server options without changing cwd.
-func (cmd *CmdTool) setupPaths(dstRelDir string) error {
-	if err := cmd.resolveProjectPaths(*cmd.Args.Path, dstRelDir); err != nil {
-		return err
-	}
+// setupPathOptions validates the prepared directory and configures server options.
+func (cmd *CmdTool) setupPathOptions() error {
 	info, err := os.Stat(cmd.TargetDir)
 	if err != nil {
 		return fmt.Errorf("failed to inspect target directory: %w", err)
@@ -203,10 +190,6 @@ func (cmd *CmdTool) setupEnginePaths() error {
 }
 
 func (cmd *CmdTool) setupProjectPaths(goos, goarch string) error {
-	// SetupEnv can be called independently of CLI path resolution.
-	if err := cmd.resolveProjectPaths(cmd.TargetDir, cmd.ProjectRelPath); err != nil {
-		return fmt.Errorf("failed to resolve project directory: %w", err)
-	}
 	targetDir, projectDir := cmd.TargetDir, cmd.ProjectDir
 	cmd.GoDir = filepath.Join(projectDir, "go")
 
@@ -227,11 +210,7 @@ func (cmd *CmdTool) setupProjectPaths(goos, goarch string) error {
 }
 
 func (cmd *CmdTool) updateProjectName() error {
-	targetDir, err := filepath.Abs(cmd.TargetDir)
-	if err != nil {
-		return fmt.Errorf("failed to resolve target directory: %w", err)
-	}
-	projectName := projectNameReplacer.Replace(filepath.Base(targetDir))
+	projectName := projectNameReplacer.Replace(filepath.Base(cmd.TargetDir))
 
 	engineFilePath := path.Join(cmd.ProjectDir, "project.godot")
 	content, err := os.ReadFile(engineFilePath)

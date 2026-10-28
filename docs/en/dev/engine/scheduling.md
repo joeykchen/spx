@@ -176,9 +176,12 @@ submission to force collision continuations through a future-frame wait.
 ### Input and timer frame boundaries
 
 Edges sampled before the input snapshot cutoff belong to this frame; later input
-belongs to the next. Routing order is mouse edges, mouse movement, keys, then due
+belongs to the next. Routing order is mouse edges, keys, then due
 timers; this does not impose a global order on user handlers. Timers registered
 or reactivated by `ResetTimer` during dispatch are checked in a subsequent batch.
+Swipe expiration runs once for each prepared input frame after its clock advances
+and before dispatch, including frames with no pointer movement. With no prepared
+frame, dispatch does not expire gestures.
 Timers are routed at the start of `OnEngineUpdate`. Pending audio and completed
 animations are still flushed by `logicLoop`; that work is not guaranteed to precede
 timer registration or callbacks.

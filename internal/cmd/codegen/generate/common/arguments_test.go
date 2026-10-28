@@ -184,6 +184,10 @@ func TestEffectiveGoArgumentTypeUsesArrayBridge(t *testing.T) {
 
 	metadata.ArrayBridges = map[string]ArrayBridge{"GDExtensionSpxSpriteBatchUpdateTransforms": {
 		FunctionName: "GDExtensionSpxSpriteBatchUpdateTransforms",
+		Arguments: []CParam{
+			{CType: "const float *", Name: "buffer_data"},
+			{CType: "int", Name: "len"},
+		},
 		Buffers: []ArrayBuffer{{
 			Data:   CParam{CType: "const float *", Name: "buffer_data"},
 			Length: CParam{CType: "int", Name: "len"}, Type: 2,

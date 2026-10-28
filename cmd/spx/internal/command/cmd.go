@@ -31,15 +31,14 @@ const PcExportName = "gdexport"
 // CmdTool stores command state.
 type CmdTool struct {
 	// Project.
-	FileSuffix     string
-	AppName        string
-	Version        string
-	ProjectRelPath string
-	ProjectDir     string
-	GoDir          string
-	TargetDir      string // Canonical absolute source root; distinct from generated ProjectDir.
-	WebDir         string
-	GoBinPath      string
+	FileSuffix string
+	AppName    string
+	Version    string
+	ProjectDir string
+	GoDir      string
+	TargetDir  string // Canonical absolute source root; distinct from generated ProjectDir.
+	WebDir     string
+	GoBinPath  string
 
 	// Embedded assets.
 	ProjectFS  embed.FS
@@ -70,7 +69,6 @@ func (cmd *CmdTool) RunCmd(projectName, fileSuffix, version string, fs embed.FS,
 	cmd.FileSuffix = fileSuffix
 	cmd.Version = version
 	cmd.ProjectFS = fs
-	cmd.ProjectRelPath = dstRelDir
 	gopath := os.Getenv("GOPATH")
 	if gopath == "" {
 		gopath = build.Default.GOPATH

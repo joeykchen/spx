@@ -148,20 +148,6 @@ func (s ArrayBridge) Clone() ArrayBridge {
 	return s
 }
 
-func (s ArrayBridge) Params() []CParam {
-	if s.Arguments != nil {
-		return slices.Clone(s.Arguments)
-	}
-	var params []CParam
-	for _, buffer := range s.Buffers {
-		params = append(params, buffer.Data)
-		if buffer.Length.Name != "" {
-			params = append(params, buffer.Length)
-		}
-	}
-	return params
-}
-
 func (s ArrayBridge) HasOutputOnly() bool {
 	for _, buffer := range s.Buffers {
 		if buffer.OutputOnly {
@@ -173,7 +159,7 @@ func (s ArrayBridge) HasOutputOnly() bool {
 
 // FixedOutput supports the no-argument Web reader for a single fixed output.
 func (s ArrayBridge) FixedOutput() *ArrayBuffer {
-	if len(s.Params()) == 1 && len(s.Buffers) == 1 && s.Buffers[0].Count != 0 && s.Buffers[0].OutputOnly {
+	if len(s.Arguments) == 1 && len(s.Buffers) == 1 && s.Buffers[0].Count != 0 && s.Buffers[0].OutputOnly {
 		return &s.Buffers[0]
 	}
 	return nil

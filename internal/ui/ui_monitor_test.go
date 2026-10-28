@@ -82,37 +82,29 @@ func TestUiMonitorRender(t *testing.T) {
 	color := mathf.NewColorRGBAi(0xff, 0x8c, 0x1a, 0xff)
 	for appearance := MonitorAppearanceDefault; appearance < MonitorAppearanceList; appearance++ {
 		t.Run(monitorViewSpecs[appearance].root, func(t *testing.T) {
-			panel, _ := newBoundMonitor(t)
 			spy := newMonitorRenderSpy()
-
-			panel.render(spy, MonitorStyle{Appearance: appearance, Label: "score", Color: color}, MonitorValue{Text: "42"})
-			if len(spy.visible) != len(panel.views) {
-				t.Fatalf("visibility updates = %d, want %d", len(spy.visible), len(panel.views))
+			panel, bound := newBoundMonitor(t, MonitorStyle{Appearance: appearance, Label: "score", Color: color}, spy)
+			panel.render(spy, MonitorValue{Text: "42"})
+			if len(spy.visible) != 1 || !spy.visible[panel.view.root.GetId()] {
+				t.Fatalf("configured view visibility = %v", spy.visible)
 			}
-			for i, view := range panel.views {
-				if got, want := spy.visible[view.root.GetId()], MonitorAppearance(i) == appearance; got != want {
-					t.Errorf("view %d visibility = %v, want %v", i, got, want)
-				}
-			}
-			assertMonitorPayload(t, spy, panel.views[appearance], "score", "42", color)
+			assertMonitorPayload(t, spy, monitorViewSpecs[appearance], bound, "score", "42", color)
 
 			spy.reset()
-			panel.render(spy, MonitorStyle{Appearance: appearance, Label: "points", Color: color}, MonitorValue{Text: "43"})
-			if len(spy.visible) != 0 {
-				t.Errorf("unchanged appearance updated visibility: %v", spy.visible)
+			panel.render(spy, MonitorValue{Text: "43"})
+			if len(spy.visible) != 0 || len(spy.color) != 0 || len(spy.text) != 1 || spy.text[panel.view.value.GetId()] != "43" {
+				t.Fatalf("value refresh rewrote fixed style: visible=%v color=%v text=%v", spy.visible, spy.color, spy.text)
 			}
-			assertMonitorPayload(t, spy, panel.views[appearance], "points", "43", color)
 		})
 	}
 }
 
 func TestUiMonitorInvalidAppearanceFallsBackToDefault(t *testing.T) {
-	panel, _ := newBoundMonitor(t)
 	spy := newMonitorRenderSpy()
-	panel.render(spy, MonitorStyle{Appearance: MonitorAppearance(255), Label: "score"}, MonitorValue{Text: "0"})
-
-	if panel.active != MonitorAppearanceDefault {
-		t.Fatalf("active appearance = %d, want default", panel.active)
+	panel, bound := newBoundMonitor(t, MonitorStyle{Appearance: MonitorAppearance(255), Label: "score"}, spy)
+	panel.render(spy, MonitorValue{Text: "0"})
+	if panel.style.Appearance != MonitorAppearanceDefault || panel.view.root.GetId() != bound["BG"] {
+		t.Fatal("invalid appearance did not configure the default view")
 	}
 }
 
@@ -144,9 +136,9 @@ func TestCalculateMaxValueLabelLocalWidth(t *testing.T) {
 }
 
 func TestUiMonitorScratchValueOnlyWrapsValueLabel(t *testing.T) {
-	panel, _ := newBoundMonitor(t)
-	view := panel.views[MonitorAppearanceCompatibleLarge]
 	spy := newMonitorRenderSpy()
+	panel, _ := newBoundMonitor(t, MonitorStyle{Appearance: MonitorAppearanceCompatibleLarge}, spy)
+	view := panel.view
 	spy.naturalWidth[view.value.GetId()] = map[string]float64{
 		"a long monitor value": 500,
 		"short":                80,
@@ -156,8 +148,7 @@ func TestUiMonitorScratchValueOnlyWrapsValueLabel(t *testing.T) {
 	}
 	panel.maxValueLabelLocalWidth = 300
 
-	style := MonitorStyle{Appearance: MonitorAppearanceCompatibleLarge}
-	panel.render(spy, style, MonitorValue{Text: "a long monitor value"})
+	panel.render(spy, MonitorValue{Text: "a long monitor value"})
 	if got := spy.maxWidths[view.value.GetId()]; !slices.Equal(got, []float64{300}) {
 		t.Fatalf("value width limits = %v, want [300]", got)
 	}
@@ -169,7 +160,7 @@ func TestUiMonitorScratchValueOnlyWrapsValueLabel(t *testing.T) {
 	}
 
 	spy.reset()
-	panel.render(spy, style, MonitorValue{Text: "short"})
+	panel.render(spy, MonitorValue{Text: "short"})
 	if got := spy.maxWidths[view.value.GetId()]; !slices.Equal(got, []float64{300}) {
 		t.Fatalf("short value width limits = %v, want [300]", got)
 	}
@@ -179,19 +170,19 @@ func TestUiMonitorScratchValueOnlyWrapsValueLabel(t *testing.T) {
 }
 
 func TestUiMonitorOtherAppearancesDoNotUseScratchValueOnlyWidth(t *testing.T) {
-	panel, _ := newBoundMonitor(t)
-	view := panel.views[MonitorAppearanceCompatible]
 	spy := newMonitorRenderSpy()
+	panel, bound := newBoundMonitor(t, MonitorStyle{Appearance: MonitorAppearanceCompatible, Label: "score"}, spy)
+	view := panel.view
 	panel.maxValueLabelLocalWidth = 400
 
-	panel.render(spy, MonitorStyle{Appearance: MonitorAppearanceCompatible, Label: "score"}, MonitorValue{Text: "value"})
+	panel.render(spy, MonitorValue{Text: "value"})
 	if got := spy.maxWidths[view.value.GetId()]; len(got) != 0 {
 		t.Fatalf("value width limits = %v, want no width limit", got)
 	}
-	if got := spy.maxWidths[view.label.GetId()]; len(got) != 0 {
+	if got := spy.maxWidths[bound[monitorViewSpecs[MonitorAppearanceCompatible].label]]; len(got) != 0 {
 		t.Fatalf("label width limits = %v, want no width limit", got)
 	}
-	if got := spy.text[view.label.GetId()]; got != "score" {
+	if got := spy.text[bound[monitorViewSpecs[MonitorAppearanceCompatible].label]]; got != "score" {
 		t.Fatalf("label text = %q, want score", got)
 	}
 	if got := spy.text[view.value.GetId()]; got != "value" {
@@ -199,37 +190,11 @@ func TestUiMonitorOtherAppearancesDoNotUseScratchValueOnlyWidth(t *testing.T) {
 	}
 }
 
-func TestUiMonitorRenderScalarTextConstrainsBothLabels(t *testing.T) {
-	panel, _ := newBoundMonitor(t)
-	view := panel.views[MonitorAppearanceCompatibleLarge]
-	label := &UiNode{}
-	label.SetId(99)
-	view.label = label
-	spy := newMonitorRenderSpy()
-	panel.maxValueLabelLocalWidth = 120
-
-	panel.renderScalarText(spy, MonitorAppearanceCompatibleLarge, view, "name", "value")
-
-	if got := spy.maxWidths[label.GetId()]; !slices.Equal(got, []float64{120}) {
-		t.Fatalf("label width limits = %v, want [120]", got)
-	}
-	if got := spy.maxWidths[view.value.GetId()]; !slices.Equal(got, []float64{120}) {
-		t.Fatalf("value width limits = %v, want [120]", got)
-	}
-}
-
 func TestUiMonitorEngineTransformsAndRender(t *testing.T) {
 	mgr := setupMonitorEngine(t)
-	panel, _ := newBoundMonitor(t)
+	panel, _ := newBoundMonitor(t, MonitorStyle{Appearance: MonitorAppearanceCompatibleLarge}, newMonitorRenderSpy())
 	panel.SetId(100)
-	view := panel.views[MonitorAppearanceCompatibleLarge]
-
-	if got := panel.getValueLabelCanvasScale(monitorView{}); got != 0 {
-		t.Fatalf("nil value canvas scale = %v, want 0", got)
-	}
-	if got := panel.getValueLabelCanvasScale(view); got != 0.5 {
-		t.Fatalf("value canvas scale = %v, want 0.5", got)
-	}
+	view := panel.view
 
 	engine.SetWindowScale(2)
 	panel.UpdateScale(1.5)
@@ -247,12 +212,19 @@ func TestUiMonitorEngineTransformsAndRender(t *testing.T) {
 		t.Fatalf("max value label width = %v, want %v", got, want)
 	}
 
-	panel.Render(MonitorStyle{Appearance: MonitorAppearanceCompatibleLarge, Color: mathf.Color{}}, MonitorValue{Text: "value"})
+	panel.Render(MonitorValue{Text: "value"})
 	if got := mgr.maxWidths[view.value.GetId()]; math.Abs(got-458) > 1e-9 {
 		t.Fatalf("rendered value width = %v, want 458", got)
 	}
 	if got := mgr.sizes[view.root.GetId()]; got != (mathf.Vec2{}) {
 		t.Fatalf("rendered root size = %v, want reset size", got)
+	}
+
+	mgr.canvasScale = mathf.NewVec2(0.25, 0.25)
+	panel.UpdatePos(mathf.NewVec2(110, 20))
+	panel.Render(MonitorValue{Text: "value"})
+	if got := mgr.maxWidths[view.value.GetId()]; math.Abs(got-538) > 1e-9 {
+		t.Fatalf("width after position and canvas scale change = %v, want 538", got)
 	}
 }
 
@@ -260,10 +232,15 @@ func TestUiMonitorSceneContract(t *testing.T) {
 	scene := readUITemplateScene(t, "UiMonitor")
 	parsed := parseMonitorScene(t, scene)
 
-	_, bound := newBoundMonitor(t)
-	for path := range bound {
-		if _, ok := parsed.nodes[path]; !ok {
-			t.Errorf("UiMonitor scene is missing bound node %q", path)
+	for appearance, spec := range monitorViewSpecs {
+		_, bound := newBoundMonitor(t, MonitorStyle{Appearance: MonitorAppearance(appearance)}, newMonitorRenderSpy())
+		for path := range bound {
+			if _, ok := parsed.nodes[path]; !ok {
+				t.Errorf("UiMonitor scene is missing bound node %q", path)
+			}
+		}
+		if monitorSceneProperty(parsed.nodes[spec.root], "visible") != "false" {
+			t.Errorf("inactive monitor view %q is initially visible", spec.root)
 		}
 	}
 	assertNodeType := func(path, want string) {
@@ -289,7 +266,7 @@ func TestUiMonitorSceneContract(t *testing.T) {
 	if got := monitorSceneProperty(parsed.nodes["."], "visible"); got != "false" {
 		t.Errorf("monitor root visibility = %q, want false", got)
 	}
-	for _, path := range []string{"ValueOnly", "ScratchBG", "ScratchValueOnly", "ScratchList", "ScratchSlider"} {
+	for _, path := range []string{"BG", "ValueOnly", "ScratchBG", "ScratchValueOnly", "ScratchList", "ScratchSlider"} {
 		if got := monitorSceneProperty(parsed.nodes[path], "visible"); got != "false" {
 			t.Errorf("%s initial visibility = %q, want false", path, got)
 		}
@@ -363,53 +340,30 @@ func TestUiMonitorSceneContract(t *testing.T) {
 }
 
 func TestListMonitorRender(t *testing.T) {
-	panel, bound := newBoundMonitor(t)
 	sink := newMonitorRenderSpy()
 	color := mathf.NewColorRGBAi(255, 102, 26, 255)
 	size := mathf.NewVec2(100, 200)
-	style := MonitorStyle{Appearance: MonitorAppearanceList, Label: "items", Color: color, Dimensions: size}
-	panel.render(sink, style, MonitorValue{Items: nil})
+	panel, bound := newBoundMonitor(t, MonitorStyle{Appearance: MonitorAppearanceList, Label: "items", Color: color, Dimensions: size}, sink)
+	panel.render(sink, MonitorValue{Items: nil})
+	panel.render(sink, MonitorValue{Items: []string{}})
 	if sink.listCalls != 1 || sink.text[bound["ScratchList"]] != "items" || sink.color[bound["ScratchList"]] != color || sink.size[bound["ScratchList"]] != size {
-		t.Fatal("initial empty list render missing")
+		t.Fatal("initial empty list render missing or repeated")
 	}
-	for _, view := range panel.views {
-		if sink.visible[view.root.GetId()] != (view.root.GetId() == bound["ScratchList"]) {
-			t.Fatal("wrong active monitor view")
-		}
-	}
+	clear(sink.size)
 	items := []string{"one", "two"}
-	panel.render(sink, style, MonitorValue{Items: items})
-	panel.render(sink, style, MonitorValue{Items: items})
-	if sink.listCalls != 2 {
-		t.Fatal("unchanged list sent across the bridge")
+	panel.render(sink, MonitorValue{Items: items})
+	panel.render(sink, MonitorValue{Items: items})
+	if sink.listCalls != 2 || len(sink.size) != 0 {
+		t.Fatal("list refresh repeated unchanged payload or fixed size")
 	}
 	items[0] = "changed"
-	panel.render(sink, style, MonitorValue{Items: items})
+	panel.render(sink, MonitorValue{Items: items})
 	if sink.listCalls != 3 || !slices.Equal(sink.items[bound["ScratchList"]], items) {
 		t.Fatal("in-place update missed")
 	}
-	panel.render(sink, style, MonitorValue{Items: nil})
+	panel.render(sink, MonitorValue{Items: nil})
 	if sink.listCalls != 4 || len(sink.items[bound["ScratchList"]]) != 0 {
 		t.Fatal("clearing the list missed")
-	}
-}
-
-func TestMonitorSwitchesBetweenScalarAndList(t *testing.T) {
-	panel, _ := newBoundMonitor(t)
-	sink := newMonitorRenderSpy()
-	color := mathf.Color{}
-	size := mathf.NewVec2(100, 200)
-	style := MonitorStyle{Appearance: MonitorAppearanceList, Label: "items", Color: color, Dimensions: size}
-	panel.render(sink, MonitorStyle{Appearance: MonitorAppearanceCompatible, Label: "score", Color: color}, MonitorValue{Text: "1"})
-	panel.render(sink, style, MonitorValue{Items: nil})
-	panel.render(sink, style, MonitorValue{Items: []string{}})
-	if sink.listCalls != 1 || panel.active != MonitorAppearanceList {
-		t.Fatal("empty list must activate once, independently of its nil representation")
-	}
-	panel.render(sink, MonitorStyle{Appearance: MonitorAppearanceDefaultLarge, Label: "score", Color: color}, MonitorValue{Text: "2"})
-	panel.render(sink, style, MonitorValue{Items: nil})
-	if sink.listCalls != 2 || panel.active != MonitorAppearanceList {
-		t.Fatal("reactivating a list must restore its payload")
 	}
 }
 
@@ -429,10 +383,9 @@ func TestSliderMonitorBidirectionalSync(t *testing.T) {
 		{"text", MonitorSlider{0, 100, 1}, "hello", 25, 25},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			panel, bound := newBoundMonitor(t)
 			sink := newMonitorRenderSpy()
-			style := MonitorStyle{Appearance: MonitorAppearanceSlider, Label: "score", Slider: tt.config}
-			panel.render(sink, style, MonitorValue{Text: tt.text})
+			panel, bound := newBoundMonitor(t, MonitorStyle{Appearance: MonitorAppearanceSlider, Label: "score", Slider: tt.config}, sink)
+			panel.render(sink, MonitorValue{Text: tt.text})
 			if sink.text[bound["ScratchSlider/V/H/ValueMargin/C/LabelValue"]] != tt.text {
 				t.Fatal("displayed variable was clamped")
 			}
@@ -447,7 +400,7 @@ func TestSliderMonitorBidirectionalSync(t *testing.T) {
 			if _, changed = panel.readSliderChange(sink); changed {
 				t.Fatal("input replayed")
 			}
-			panel.render(sink, style, MonitorValue{Text: "-100"})
+			panel.render(sink, MonitorValue{Text: "-100"})
 			if _, changed := panel.readSliderChange(sink); changed {
 				t.Fatal("program update produced user input")
 			}
@@ -456,33 +409,28 @@ func TestSliderMonitorBidirectionalSync(t *testing.T) {
 }
 
 func TestSliderMonitorEqualBounds(t *testing.T) {
-	panel, _ := newBoundMonitor(t)
 	sink := newMonitorRenderSpy()
-	panel.render(sink, MonitorStyle{Appearance: MonitorAppearanceSlider, Slider: MonitorSlider{5, 5, 1}}, MonitorValue{Text: "20"})
+	panel, _ := newBoundMonitor(t, MonitorStyle{Appearance: MonitorAppearanceSlider, Slider: MonitorSlider{5, 5, 1}}, sink)
+	panel.render(sink, MonitorValue{Text: "20"})
 	if _, changed := panel.readSliderChange(sink); changed {
 		t.Fatal("fixed range changed variable")
 	}
 }
 
-func TestMonitorSwitchDiscardsInactiveSliderInput(t *testing.T) {
-	panel, bound := newBoundMonitor(t)
+func TestSliderMonitorWaitsForFirstRenderAndUpdatesProgramValue(t *testing.T) {
 	sink := newMonitorRenderSpy()
+	panel, bound := newBoundMonitor(t, MonitorStyle{Appearance: MonitorAppearanceSlider, Slider: MonitorSlider{0, 100, 1}}, sink)
+	sink.ranges[bound["ScratchSlider/V/Slider"]] = 37
 	if _, changed := panel.readSliderChange(sink); changed {
 		t.Fatal("input before first render")
 	}
-	style := MonitorStyle{Appearance: MonitorAppearanceSlider, Slider: MonitorSlider{0, 100, 1}}
-	panel.render(sink, style, MonitorValue{Text: "25"})
-	sink.ranges[bound["ScratchSlider/V/Slider"]] = 37
-	panel.render(sink, MonitorStyle{Appearance: MonitorAppearanceList}, MonitorValue{Items: []string{"one"}})
+	panel.render(sink, MonitorValue{Text: "25"})
+	panel.render(sink, MonitorValue{Text: "42"})
 	if _, changed := panel.readSliderChange(sink); changed {
-		t.Fatal("inactive slider emitted input")
-	}
-	panel.render(sink, style, MonitorValue{Text: "42"})
-	if _, changed := panel.readSliderChange(sink); changed {
-		t.Fatal("reactivation replayed stale input")
+		t.Fatal("program update produced user input")
 	}
 	if got := sink.ranges[bound["ScratchSlider/V/Slider"]]; got != 42 {
-		t.Fatalf("restored slider value = %v", got)
+		t.Fatalf("updated slider value = %v", got)
 	}
 }
 
@@ -543,8 +491,6 @@ func (p *monitorRenderSpy) SetTextMaxWidth(id engine.Object, text string, maxWid
 func (p *monitorRenderSpy) SetColor(id engine.Object, color mathf.Color) {
 	p.color[id] = color
 }
-
-func (p *monitorRenderSpy) GetSize(id engine.Object) mathf.Vec2 { return p.size[id] }
 
 func (p *monitorRenderSpy) SetSize(id engine.Object, size mathf.Vec2) {
 	p.size[id] = size
@@ -654,12 +600,12 @@ func setupMonitorEngine(t *testing.T) *monitorEngineUiSpy {
 	return mgr
 }
 
-func newBoundMonitor(t *testing.T) (*UiMonitor, map[string]engine.Object) {
+func newBoundMonitor(t *testing.T, style MonitorStyle, sink monitorRenderSink) (*UiMonitor, map[string]engine.Object) {
 	t.Helper()
 	panel := &UiMonitor{}
 	bound := make(map[string]engine.Object)
 	nextID := engine.Object(1)
-	panel.bindViews(func(path string) *UiNode {
+	panel.configure(style, func(path string) *UiNode {
 		if _, exists := bound[path]; exists {
 			t.Fatalf("duplicate monitor binding %q", path)
 		}
@@ -668,37 +614,37 @@ func newBoundMonitor(t *testing.T) (*UiMonitor, map[string]engine.Object) {
 		node.SetId(nextID)
 		nextID++
 		return node
-	})
+	}, sink)
 	return panel, bound
 }
 
-func assertMonitorPayload(t *testing.T, spy *monitorRenderSpy, view monitorView, name, value string, color mathf.Color) {
+func assertMonitorPayload(t *testing.T, spy *monitorRenderSpy, spec monitorViewSpec, bound map[string]engine.Object, name, value string, color mathf.Color) {
 	t.Helper()
 	if spy.listCalls != 0 || len(spy.size) != 0 {
 		t.Fatal("scalar monitor used list-only operations")
 	}
 	wantTextCount := 1
-	if view.label != nil {
+	if spec.label != "" {
 		wantTextCount++
-		if got := spy.text[view.label.GetId()]; got != name {
+		if got := spy.text[bound[spec.label]]; got != name {
 			t.Errorf("label text = %q, want %q", got, name)
 		}
 	}
-	if got := spy.text[view.value.GetId()]; got != value {
+	if got := spy.text[bound[spec.value]]; got != value {
 		t.Errorf("value text = %q, want %q", got, value)
 	}
 	if len(spy.text) != wantTextCount {
 		t.Errorf("text updates = %v, want only active view", spy.text)
 	}
 
-	if view.colorTarget == nil {
+	if spec.colorTarget == "" {
 		if len(spy.color) != 0 {
 			t.Errorf("default appearance changed color: %v", spy.color)
 		}
 		return
 	}
-	if got := spy.color[view.colorTarget.GetId()]; got != color || len(spy.color) != 1 {
-		t.Errorf("color updates = %v, want {%d: %v}", spy.color, view.colorTarget.GetId(), color)
+	if got := spy.color[bound[spec.colorTarget]]; got != color || len(spy.color) != 1 {
+		t.Errorf("color updates = %v, want {%d: %v}", spy.color, bound[spec.colorTarget], color)
 	}
 }
 

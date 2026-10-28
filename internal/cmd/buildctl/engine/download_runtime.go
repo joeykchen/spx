@@ -26,15 +26,8 @@ import (
 
 func downloadRuntimePack(env engineDownloadEnv) error {
 	versionedPack := filepath.Join(env.goBinDir, fmt.Sprintf("gdspxrt%s.pck", env.version))
-	zipName := env.runtimePackAsset
-	if zipName == "" {
-		zipName = release.RuntimeAssetZipName
-	}
-	urlPrefix := env.runtimeAssetURLPrefix
-	if urlPrefix == "" {
-		urlPrefix = env.urlPrefix
-	}
-	url := urlPrefix + zipName
+	const zipName = release.RuntimeAssetZipName
+	url := env.urlPrefix + zipName
 	zipPath := filepath.Join(env.cacheDir, zipName)
 	if err := fetchEngineAsset(env, zipName, url, zipPath); err != nil {
 		return err

@@ -19,8 +19,9 @@
 package ffi
 
 import (
-	"bytes"
+	"fmt"
 	"math"
+	"os"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -29,6 +30,19 @@ import (
 	"github.com/goplus/spx/v4/internal/gdengine/binding/native/testdata/stringallocator"
 	"github.com/goplus/spx/v4/pkg/spx/pkg/engine"
 )
+
+type applicationMainEntered struct{}
+
+var interceptApplicationMain bool
+
+func TestMain(m *testing.M) {
+	// The installed scene hook calls main.main through go:linkname. Intercept
+	// that reentry so lifecycle tests cannot recursively run the test suite.
+	if interceptApplicationMain {
+		panic(applicationMainEntered{})
+	}
+	os.Exit(m.Run())
+}
 
 func TestToGdArrayInfoPreservesTypedEmptyArrays(t *testing.T) {
 	tests := []struct {
@@ -209,6 +223,24 @@ func TestToArrayRejectsUnknownNativeType(t *testing.T) {
 	}
 }
 
+func TestNativeArrayAllocationRejectsInvalidMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		kind int64
+		size int
+	}{
+		{"negative size", ArrayTypeByte, -1},
+		{"unknown nonempty type", -1, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if info := allocateGdArrayInfo(tc.kind, tc.size, false); info != nil {
+				info.Free()
+				t.Fatal("invalid native array metadata allocated storage")
+			}
+		})
+	}
+}
+
 func TestNativeScalarConversions(t *testing.T) {
 	for _, value := range []bool{false, true} {
 		if ToBool(ToGdBool(value)) != value {
@@ -235,12 +267,6 @@ func TestNativeScalarConversions(t *testing.T) {
 	if ToVec2(ToGdVec2(vec2)) != vec2 || ToVec4(ToGdVec4(vec4)) != vec4 || ToColor(ToGdColor(color)) != color || ToRect2(ToGdRect2(rect)) != rect {
 		t.Fatal("structured value round trip changed components")
 	}
-	defer func() {
-		if got := recover(); got != "constructor is null" {
-			t.Fatalf("nil constructor panic = %v", got)
-		}
-	}()
-	CallBuiltinConstructor(nil, nil)
 }
 
 func TestReturnedStringsUseRuntimeAllocator(t *testing.T) {
@@ -281,12 +307,12 @@ func TestReturnedStringsUseRuntimeAllocator(t *testing.T) {
 // run in parallel. Restore every binding to keep shuffled/repeated runs isolated.
 func bindNativeBuiltinFixture(t *testing.T) []string {
 	t.Helper()
-	previousResolver, previousAPI := resolveCFunc, builtinAPI
-	previousStrings, previousCallbacks := globalStringMethodBindings, callbacks
+	previousResolver, previousBuiltinAPI, previousAPI := resolveCFunc, builtinAPI, api
+	previousCallbacks := callbacks
 	stringallocator.Reset()
 	t.Cleanup(func() {
-		resolveCFunc, builtinAPI = previousResolver, previousAPI
-		globalStringMethodBindings, callbacks = previousStrings, previousCallbacks
+		resolveCFunc, builtinAPI, api = previousResolver, previousBuiltinAPI, previousAPI
+		callbacks = previousCallbacks
 		stringallocator.Reset()
 	})
 	var names []string
@@ -303,12 +329,6 @@ func TestNativeBuiltinResolution(t *testing.T) {
 	bindings := map[string]unsafe.Pointer{
 		"spx_global_register_callbacks": unsafe.Pointer(builtinAPI.SpxGlobalRegisterCallbacks),
 		"spx_global_free_string":        unsafe.Pointer(builtinAPI.SpxGlobalFreeString),
-		"string_new_with_latin1_chars":  unsafe.Pointer(builtinAPI.StringNewWithLatin1Chars),
-		"string_new_with_utf8_chars":    unsafe.Pointer(builtinAPI.StringNewWithUtf8Chars),
-		"string_to_latin1_chars":        unsafe.Pointer(builtinAPI.StringToLatin1Chars),
-		"string_to_utf8_chars":          unsafe.Pointer(builtinAPI.StringToUtf8Chars),
-		"variant_get_ptr_constructor":   unsafe.Pointer(builtinAPI.VariantGetPtrConstructor),
-		"variant_get_ptr_destructor":    unsafe.Pointer(builtinAPI.VariantGetPtrDestructor),
 	}
 	if len(names) != len(bindings) {
 		t.Fatalf("resolved symbols = %v, want %d builtin symbols", names, len(bindings))
@@ -330,93 +350,63 @@ func TestNativeBuiltinResolution(t *testing.T) {
 	}
 }
 
-func TestNativeBuiltinConstructorsAndInitialization(t *testing.T) {
+func TestNativeInitialization(t *testing.T) {
 	bindNativeBuiltinFixture(t)
 	configuration := initialization{}
-	doInitialization(&configuration)
+	if got := gdspx_init(uintptr(stringallocator.Resolver()), nil, unsafe.Pointer(&configuration)); got != 1 {
+		t.Fatalf("initialization result = %d, want success", got)
+	}
+	if configuration.minimum_initialization_level != initializationLevel(GDExtensionInitializationLevelScene) {
+		t.Fatal("initialization did not select the scene level")
+	}
 	if configuration.initialize == nil || configuration.deinitialize == nil {
 		t.Fatal("initialization callbacks were not installed")
 	}
-	constructor, destructor := globalStringMethodBindings.constructor, globalStringMethodBindings.destructor
-	if constructor == nil || destructor == nil {
-		t.Fatal("string constructor/destructor bindings are nil")
+	if !ToBool(CallPlatformIsMainThread()) || stringallocator.RegistrationCount() != 1 || !stringallocator.HasRegistration() {
+		t.Fatal("initialization did not bind the engine API and register callbacks once")
 	}
-	if got := CallVariantGetPtrConstructor(GDEXTENSION_VARIANT_TYPE_VECTOR2, 0); got != nil {
-		t.Fatalf("unsupported constructor type returned %p", got)
-	}
-	for _, index := range []int32{-1, math.MaxInt32} {
-		if got := CallVariantGetPtrConstructor(GDEXTENSION_VARIANT_TYPE_STRING, index); got != nil {
-			t.Fatalf("unsupported constructor index %d returned %p", index, got)
+	for _, phase := range []struct {
+		name       string
+		initialize bool
+	}{{"initialize", true}, {"deinitialize", false}} {
+		for level := 0; level <= 3; level++ {
+			t.Run(fmt.Sprintf("%s/%d", phase.name, level), func(t *testing.T) {
+				interceptApplicationMain = true
+				t.Cleanup(func() { interceptApplicationMain = false })
+				defer func() {
+					got := recover()
+					if phase.initialize && level == int(GDExtensionInitializationLevelScene) {
+						if got != (applicationMainEntered{}) {
+							t.Fatalf("scene hook entered %v, want application main", got)
+						}
+					} else if got != nil {
+						t.Fatalf("inactive lifecycle hook entered application main: %v", got)
+					}
+				}()
+				stringallocator.InvokeLifecycle(unsafe.Pointer(&configuration), level, phase.initialize)
+			})
 		}
-	}
-	if got := CallVariantGetPtrDestructor(GDEXTENSION_VARIANT_TYPE_VECTOR2); got != nil {
-		t.Fatalf("unsupported destructor type returned %p", got)
-	}
-	storage := ToGdArrayInfo([]int64{0})
-	defer storage.Free()
-	base := storage.gdArray.data
-	CallBuiltinConstructor(constructor, GDExtensionUninitializedTypePtr(base))
-	if got := storage.ToInt64s()[0]; got != 71 {
-		t.Fatalf("no-argument constructor wrote %d, want 71", got)
-	}
-	arguments := ToGdArrayInfo([]int64{17, -3})
-	defer arguments.Free()
-	withArguments := CallVariantGetPtrConstructor(GDEXTENSION_VARIANT_TYPE_STRING, 1)
-	if withArguments == nil {
-		t.Fatal("argument constructor is nil")
-	}
-	CallBuiltinConstructor(withArguments, GDExtensionUninitializedTypePtr(base),
-		GDExtensionConstTypePtr(arguments.gdArray.data),
-		GDExtensionConstTypePtr(unsafe.Add(arguments.gdArray.data, unsafe.Sizeof(int64(0)))))
-	if got := storage.ToInt64s()[0]; got != 167 {
-		t.Fatalf("constructor arguments wrote %d, want 167", got)
-	}
-	if got := arguments.ToInt64s(); !reflect.DeepEqual(got, []int64{17, -3}) {
-		t.Fatalf("constructor modified its const arguments: %v", got)
-	}
-	CallPtrDestructor(destructor, GDExtensionTypePtr(base))
-	if got := storage.ToInt64s()[0]; got != -99 {
-		t.Fatalf("destructor wrote %d, want -99", got)
 	}
 }
 
-func TestNativeBuiltinStringCalls(t *testing.T) {
+func TestNativeInitializationRejectsMissingMainThreadAPI(t *testing.T) {
 	bindNativeBuiltinFixture(t)
-	for _, tc := range []struct {
-		name, value string
-		tag         byte
-		create      func(GDExtensionUninitializedStringPtr, string)
-		read        func(GDExtensionConstStringPtr, *Char, GdInt) GdInt
-	}{
-		{"latin1", "caf\xe9", 'L', CallStringNewWithLatin1Chars, CallStringToLatin1Chars},
-		{"utf8", "héllo 世界", 'U', CallStringNewWithUtf8Chars, CallStringToUtf8Chars},
-		{"empty", "", 'U', CallStringNewWithUtf8Chars, CallStringToUtf8Chars},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			storage := ToGdArrayInfo(make([]byte, len(tc.value)+2))
-			defer storage.Free()
-			base := storage.gdArray.data
-			tc.create(GDExtensionUninitializedStringPtr(base), tc.value)
-			want := append([]byte{tc.tag}, []byte(tc.value)...)
-			want = append(want, 0)
-			if got := storage.ToBytes(); !bytes.Equal(got, want) {
-				t.Fatalf("string destination = %q, want %q", got, want)
-			}
-			self := GDExtensionConstStringPtr(base)
-			if got := tc.read(self, nil, 0); int(got) != len(tc.value) {
-				t.Fatalf("length query = %d, want %d", got, len(tc.value))
-			}
-			for _, limit := range []int{0, 2, len(tc.value) + 1} {
-				output := bytes.Repeat([]byte{'?'}, len(tc.value)+2)
-				got := tc.read(self, (*Char)(unsafe.Pointer(&output[0])), GdInt(limit))
-				want := bytes.Repeat([]byte{'?'}, len(output))
-				copy(want[:min(limit, len(tc.value))], tc.value)
-				if int(got) != len(tc.value) || !bytes.Equal(output, want) {
-					t.Fatalf("read limit %d = %q, length %d; want %q, length %d", limit, output, got, want, len(tc.value))
-				}
-			}
-		})
-	}
+	configuration := initialization{}
+	gdspx_init(uintptr(stringallocator.Resolver()), nil, unsafe.Pointer(&configuration))
+	// A previous link must not mask a missing required symbol in the next one.
+	configuration = initialization{minimum_initialization_level: initializationLevel(GDExtensionInitializationLevelEditor)}
+	defer func() {
+		if got := recover(); got != "gdengine: spx_platform_is_main_thread is unavailable" {
+			t.Fatalf("missing main-thread API panic = %v", got)
+		}
+		if api.SpxPlatformIsMainThread != nil || stringallocator.RegistrationCount() != 1 {
+			t.Fatal("failed startup reused a stale symbol or registered callbacks")
+		}
+		if configuration.minimum_initialization_level != initializationLevel(GDExtensionInitializationLevelEditor) || configuration.initialize != nil || configuration.deinitialize != nil {
+			t.Fatal("failed startup published initialization hooks")
+		}
+	}()
+	gdspx_init(uintptr(stringallocator.ResolverWithoutMainThread()), nil, unsafe.Pointer(&configuration))
 }
 
 func TestNativeRegisteredCallbacksCrossCABI(t *testing.T) {
