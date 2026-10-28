@@ -19,8 +19,9 @@ package spx
 import (
 	"fmt"
 	"slices"
-	"strconv"
 	"testing"
+
+	"github.com/goplus/spx/v4/internal/scratch"
 )
 
 func TestListInitFromOwnsElementStorage(t *testing.T) {
@@ -104,7 +105,7 @@ func TestListDeleteAndReadPositions(t *testing.T) {
 	}
 }
 
-func TestStyleListEquality(t *testing.T) {
+func TestListEquality(t *testing.T) {
 	list := NewList(1, "02", "Apple")
 
 	tests := []struct {
@@ -199,17 +200,20 @@ func TestValueNumericConversions(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%T(%v)", test.input, test.input), func(t *testing.T) {
 			value := NewValue(test.input)
+			if got := value.Raw(); got != test.input {
+				t.Errorf("Value.Raw() = %T(%v), want %T(%v)", got, got, test.input, test.input)
+			}
 			if got := value.Int(); got != test.want {
 				t.Errorf("Value.Int() = %d, want %d", got, test.want)
 			}
 			if got := value.Float(); got != float64(test.want) {
 				t.Errorf("Value.Float() = %g, want %d", got, test.want)
 			}
-			if got, ok := toIntAny(test.input); !ok || got != test.want {
-				t.Errorf("toIntAny() = %d, %v; want %d, true", got, ok, test.want)
+			if got, ok := scratch.ToInt(test.input); !ok || got != test.want {
+				t.Errorf("scratch.ToInt() = %d, %v; want %d, true", got, ok, test.want)
 			}
-			if got, ok := toFloat64Any(test.input); !ok || got != float64(test.want) {
-				t.Errorf("toFloat64Any() = %g, %v; want %d, true", got, ok, test.want)
+			if got, ok := scratch.ToFloat64(test.input); !ok || got != float64(test.want) {
+				t.Errorf("scratch.ToFloat64() = %g, %v; want %d, true", got, ok, test.want)
 			}
 		})
 	}
@@ -237,178 +241,6 @@ func TestValueConversionFailureReturnsZero(t *testing.T) {
 	}
 }
 
-func TestFloatStringConversion(t *testing.T) {
-	for _, test := range []struct {
-		name  string
-		input string
-		want  float64
-		ok    bool
-	}{
-		{"double minus becomes positive", "--5.5", 5.5, true},
-		{"plus minus becomes negative", "+-12", -12, true},
-		{"generated negation pattern on negative value", "-" + fmt.Sprintf("%v", -18.25), 18.25, true},
-		{"empty after trimming", " ", 0, false},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			if got, ok := parseFloatString(test.input); ok != test.ok || got != test.want {
-				t.Errorf("parseFloatString(%q) = %g, %v; want %g, %v", test.input, got, ok, test.want, test.ok)
-			}
-			if got, ok := toFloat64Any(test.input); ok != test.ok || got != test.want {
-				t.Errorf("toFloat64Any(%q) = %g, %v; want %g, %v", test.input, got, ok, test.want, test.ok)
-			}
-		})
-	}
-}
-
-func TestNormalizeNumericStringSigns(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-		shouldOk bool
-	}{
-		{
-			name:     "plain number unchanged",
-			input:    "12.5",
-			expected: "12.5",
-			shouldOk: true,
-		},
-		{
-			name:     "double minus becomes positive",
-			input:    "--7",
-			expected: "7",
-			shouldOk: true,
-		},
-		{
-			name:     "plus minus becomes negative",
-			input:    "+-12",
-			expected: "-12",
-			shouldOk: true,
-		},
-		{
-			name:     "trim surrounding spaces",
-			input:    "  --18.25  ",
-			expected: "18.25",
-			shouldOk: true,
-		},
-		{
-			name:     "signs only invalid",
-			input:    "--",
-			expected: "",
-			shouldOk: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, ok := normalizeNumericStringSigns(tt.input)
-			if ok != tt.shouldOk {
-				t.Fatalf("normalizeNumericStringSigns(%q) ok = %v, want %v", tt.input, ok, tt.shouldOk)
-			}
-			if result != tt.expected {
-				t.Fatalf("normalizeNumericStringSigns(%q) = %q, want %q", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestParseIntString(t *testing.T) {
-	maxInt := int(^uint(0) >> 1)
-	for _, test := range []struct {
-		name  string
-		input string
-		want  int
-		ok    bool
-	}{
-		{"compound sign integer", "--7", 7, true},
-		{"float string truncates like int conversion", "--7.9", 7, true},
-		{"max int preserved", strconv.Itoa(maxInt), maxInt, true},
-		{"signs only invalid", "--", 0, false},
-		{"empty", "", 0, false},
-		{"empty after trimming", "  ", 0, false},
-		{"plus only invalid", "+", 0, false},
-		{"positive overflow", "1e30", 0, false},
-		{"negative overflow", "-1e30", 0, false},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			if got, ok := parseIntString(test.input); ok != test.ok || got != test.want {
-				t.Fatalf("parseIntString(%q) = %d, %v; want %d, %v", test.input, got, ok, test.want, test.ok)
-			}
-		})
-	}
-}
-
-func TestToIntAnyCompoundSignString(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected int
-	}{
-		{
-			name:     "double minus becomes positive",
-			input:    "--7",
-			expected: 7,
-		},
-		{
-			name:     "generated negation pattern on negative integer",
-			input:    "-" + fmt.Sprintf("%v", -24),
-			expected: 24,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, ok := toIntAny(tt.input)
-			if !ok {
-				t.Fatalf("toIntAny(%q) ok = false, want true", tt.input)
-			}
-			if result != tt.expected {
-				t.Fatalf("toIntAny(%q) = %d, want %d", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestToIntAnyPreservesLargeIntegerStringPrecision(t *testing.T) {
-	maxInt := int(^uint(0) >> 1)
-	tests := []struct {
-		name     string
-		input    string
-		expected int
-	}{
-		{
-			name:     "max int string",
-			input:    strconv.Itoa(maxInt),
-			expected: maxInt,
-		},
-	}
-
-	if int64(maxInt) > int64(1<<53) {
-		beyondFloatExact := int64(1<<53) + 1
-		tests = append(tests, struct {
-			name     string
-			input    string
-			expected int
-		}{
-			name:     "integer above float64 exact range",
-			input:    strconv.FormatInt(beyondFloatExact, 10),
-			expected: int(beyondFloatExact),
-		})
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, ok := toIntAny(tt.input)
-			if !ok {
-				t.Fatalf("toIntAny(%q) ok = false, want true", tt.input)
-			}
-			if result != tt.expected {
-				t.Fatalf("toIntAny(%q) = %d, want %d", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestValueSet(t *testing.T) {
 	var absent *Value
 	absent.Set("ignored")
@@ -417,19 +249,8 @@ func TestValueSet(t *testing.T) {
 	if value.String() != "new" {
 		t.Fatalf("Set = %v", value)
 	}
-}
-
-func TestToIntAnyOutOfRange(t *testing.T) {
-	inputs := []any{^uint(0), ^uint64(0), float32(1e30), float64(1e30), float32(-1e30), float64(-1e30)}
-	if strconv.IntSize == 32 {
-		inputs = append(inputs, int64(1<<40), int64(-1<<31)-1, uint32(1<<31))
-	}
-	for _, input := range inputs {
-		t.Run(fmt.Sprintf("%T(%v)", input, input), func(t *testing.T) {
-			if got, ok := toIntAny(input); ok || got != 0 {
-				t.Fatalf("toIntAny() = %d, %v; want 0, false", got, ok)
-			}
-		})
+	if got := value.Raw(); got != "new" {
+		t.Fatalf("Set retained a wrapped value: %T(%v)", got, got)
 	}
 }
 

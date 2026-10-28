@@ -300,6 +300,8 @@ func TestCompareAndEqual(t *testing.T) {
 		{name: "wrapped numeric string compares numerically", v1: NewValue("01"), v2: 1, compare: 0, equal: true},
 		{name: "wrapped numeric string on right compares numerically", v1: 1, v2: NewValue("01"), compare: 0, equal: true},
 		{name: "wrapped bool compares numerically", v1: NewValue(true), v2: 1, compare: 0, equal: true},
+		{name: "wrapped text compares case insensitively", v1: NewValue("Apple"), v2: "apple", compare: 0, equal: true},
+		{name: "zero value compares as empty text", v1: Value{}, v2: "", compare: 0, equal: true},
 	}
 
 	for _, tt := range tests {
@@ -329,7 +331,7 @@ func TestOutOfRangeListItemDoesNotEqualZero(t *testing.T) {
 
 func TestEqualUsesULPToleranceOnlyForNumericEquality(t *testing.T) {
 	twoULPsAbove116 := 116.0
-	for range compareMaxULPs {
+	for range 2 {
 		twoULPsAbove116 = math.Nextafter(twoULPsAbove116, math.Inf(1))
 	}
 	threeULPsAbove116 := math.Nextafter(twoULPsAbove116, math.Inf(1))

@@ -17,14 +17,12 @@
 package spx
 
 import (
-	"math"
 	"strings"
 
 	"github.com/goplus/spx/v4/internal/engine"
+	"github.com/goplus/spx/v4/internal/scratch"
 	itime "github.com/goplus/spx/v4/internal/time"
 )
-
-const compareMaxULPs = 2
 
 // Rand__0 returns a random integer between from and to (inclusive).
 func Rand__0(from, to int) int {
@@ -50,83 +48,39 @@ func Iround(v float64) int {
 	return int(v - 0.5)
 }
 
-// LimitPrecision snaps a coordinate to the nearest integer when the distance is
-// less than 1e-9, matching Scratch's own x/y position reporters. Other values,
-// including NaN and infinities, are returned unchanged.
-// In SPX scripts, use limitPrecision(xpos) or limitPrecision(ypos) for the
-// sprite's own coordinate blocks; read other sprites' coordinates directly.
+// LimitPrecision rounds a coordinate when it is strictly within 1e-9 of an
+// integer; NaN and infinities pass through. Apply it to a sprite's own x/y
+// reporters, leaving property queries unchanged.
 func LimitPrecision(coordinate float64) float64 {
-	rounded := math.Round(coordinate)
-	if math.Abs(coordinate-rounded) < 1e-9 {
-		return rounded
-	}
-	return coordinate
+	return scratch.LimitPrecision(coordinate)
 }
 
-// Div returns a divided by b, converting a NaN result to zero while preserving
-// infinities. For example, Div(0, 0) returns 0 and Div(1, 0) returns +Inf.
-// In SPX scripts, it can be called as div(a, b).
+// Div divides a by b, converting a NaN result to zero and preserving infinities.
 func Div(a, b float64) float64 {
-	result := a / b
-	if math.IsNaN(result) {
-		return 0
-	}
-	return result
+	return scratch.Div(a, b)
 }
 
-// FloorMod returns the remainder of dividend divided by divisor using
-// floored-division semantics. Unlike math.Mod, a non-zero result has the same
-// sign as divisor. This matches Scratch's mod operator:
-// https://github.com/scratchfoundation/scratch-vm/blob/3070e30241c391254d94f3a98129f9e96b902631/src/blocks/scratch3_operators.js#L118-L125
+// FloorMod returns the remainder using floored division. A non-zero result
+// has the divisor's sign. A zero divisor produces NaN.
 func FloorMod(dividend, divisor float64) float64 {
-	result := math.Mod(dividend, divisor)
-	if result/divisor < 0 {
-		result += divisor
-	}
-	return result
+	return scratch.FloorMod(dividend, divisor)
 }
 
-// Contains reports whether substr is within s using Scratch's
-// case-insensitive string matching semantics.
+// Contains reports whether substr occurs in s, ignoring case.
 func Contains(s, substr string) bool {
-	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+	return scratch.Contains(s, substr)
 }
 
-// Compare compares values using the same rules as Scratch's =, <, and >
-// operator blocks.
-//
-// Values are compared numerically when both sides can be interpreted as numbers;
-// otherwise they are compared as case-insensitive strings.
+// Compare compares numbers when both operands are numeric, otherwise strings
+// ignoring case. It returns -1, 0, or 1 without Equal's numeric tolerance.
 func Compare(v1, v2 any) int {
-	if n1, ok1 := toCompareNumber(v1); ok1 {
-		if n2, ok2 := toCompareNumber(v2); ok2 {
-			switch {
-			case n1 < n2:
-				return -1
-			case n1 > n2:
-				return 1
-			default:
-				return 0
-			}
-		}
-	}
-
-	s1 := strings.ToLower(toString(v1))
-	s2 := strings.ToLower(toString(v2))
-	return strings.Compare(s1, s2)
+	return scratch.Compare(unwrapValue(v1), unwrapValue(v2))
 }
 
-// Equal reports whether two values match Scratch's = operator semantics.
-// Numeric values tolerate a small number of adjacent floating-point values to
-// absorb representation-level rounding errors. Compare remains exact for
-// ordering.
+// Equal compares like Compare, allowing up to two ULPs of numeric rounding error.
+// Numeric comparisons involving NaN return false.
 func Equal(v1, v2 any) bool {
-	if n1, ok1 := toCompareNumber(v1); ok1 {
-		if n2, ok2 := toCompareNumber(v2); ok2 {
-			return nearlyEqual(n1, n2)
-		}
-	}
-	return Compare(v1, v2) == 0
+	return scratch.Equal(unwrapValue(v1), unwrapValue(v2))
 }
 
 // DeltaTime returns the time elapsed since the previous frame.
@@ -139,21 +93,9 @@ func TimeSinceLevelLoad() Seconds {
 	return itime.TimeSinceLevelLoad()
 }
 
-// CharAt returns the character at the given 0-based index in the string s.
-// It is similar to Scratch's operator_letter_of block, but uses Go-style
-// 0-based indexing. It returns an empty string if idx is out of range for the
-// rune sequence.
+// CharAt returns the rune at the 0-based index in s, or "" if out of range.
 func CharAt(s string, idx int) string {
-	if idx < 0 {
-		return ""
-	}
-	for _, r := range s {
-		if idx == 0 {
-			return string(r)
-		}
-		idx--
-	}
-	return ""
+	return scratch.CharAt(s, idx)
 }
 
 // Exit__0 exits the program with exit code 0.
@@ -182,31 +124,4 @@ func PenColorParamFromString(s string) PenColorParam {
 	default:
 		return PenNone
 	}
-}
-
-func nearlyEqual(a, b float64) bool {
-	if a == b {
-		return true
-	}
-	if math.IsNaN(a) || math.IsNaN(b) || math.IsInf(a, 0) || math.IsInf(b, 0) {
-		return false
-	}
-	for range compareMaxULPs {
-		a = math.Nextafter(a, b)
-		if a == b {
-			return true
-		}
-	}
-	return false
-}
-
-func toCompareNumber(v any) (float64, bool) {
-	v = fromObj(v)
-	if v == nil {
-		return 0, false
-	}
-	if s, ok := v.(string); ok && strings.TrimSpace(s) == "" {
-		return 0, false
-	}
-	return toFloat64Any(v)
 }

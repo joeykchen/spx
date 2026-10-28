@@ -72,6 +72,7 @@ func init() {
 			"github.com/goplus/spx/v4/internal/input/keycode":   "keycode",
 			"github.com/goplus/spx/v4/internal/log":             "log",
 			"github.com/goplus/spx/v4/internal/projectloader":   "projectloader",
+			"github.com/goplus/spx/v4/internal/scratch":         "scratch",
 			"github.com/goplus/spx/v4/internal/tilemap":         "tilemap",
 			"github.com/goplus/spx/v4/internal/time":            "time",
 			"github.com/goplus/spx/v4/internal/tools":           "tools",
@@ -604,11 +605,13 @@ func init() {
 		"(*Value).Equal":               method_ptr_Value_Equal,
 		"(*Value).Float":               method_ptr_Value_Float,
 		"(*Value).Int":                 method_ptr_Value_Int,
+		"(*Value).Raw":                 method_ptr_Value_Raw,
 		"(*Value).Set":                 method_ptr_Value_Set,
 		"(*Value).String":              method_ptr_Value_String,
 		"(Value).Equal":                method_Value_Equal,
 		"(Value).Float":                method_Value_Float,
 		"(Value).Int":                  method_Value_Int,
+		"(Value).Raw":                  method_Value_Raw,
 		"(Value).String":               method_Value_String,
 		"CharAt":                       func_CharAt,
 		"Compare":                      func_Compare,
@@ -983,6 +986,14 @@ func method_Value_Int(ctx ixgo.DirectCallContext) {
 
 func method_ptr_Value_Int(ctx ixgo.DirectCallContext) {
 	ctx.SetResult((*q.Value).Int(ixgo.DirectCallArg[*q.Value](ctx, 0)))
+}
+
+func method_Value_Raw(ctx ixgo.DirectCallContext) {
+	ctx.SetResult(q.Value.Raw(ixgo.DirectCallArg[q.Value](ctx, 0)))
+}
+
+func method_ptr_Value_Raw(ctx ixgo.DirectCallContext) {
+	ctx.SetResult((*q.Value).Raw(ixgo.DirectCallArg[*q.Value](ctx, 0)))
 }
 
 func method_ptr_Value_Set(ctx ixgo.DirectCallContext) {

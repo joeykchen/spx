@@ -25,6 +25,7 @@ import (
 	"github.com/goplus/spbase/mathf"
 	coreproject "github.com/goplus/spx/v4/internal/core/project"
 	spxlog "github.com/goplus/spx/v4/internal/log"
+	"github.com/goplus/spx/v4/internal/scratch"
 	"github.com/goplus/spx/v4/internal/tools"
 	"github.com/goplus/spx/v4/internal/ui"
 )
@@ -403,7 +404,7 @@ func listMonitorItems(value any) []string {
 	}
 	items := make([]string, list.Len())
 	for i := range items {
-		items[i] = toString(list.Index(i).Interface())
+		items[i] = scratch.ToString(list.Index(i).Interface())
 	}
 	return items
 }
