@@ -79,13 +79,13 @@ type inputSession struct {
 
 type inputRecordingResult struct {
 	replay InputReplay
-	json   []byte
+	json   string
 }
 
 func (r inputRecordingResult) clone() inputRecordingResult {
 	return inputRecordingResult{
 		replay: inputstate.CloneInputReplay(r.replay),
-		json:   append([]byte(nil), r.json...),
+		json:   r.json,
 	}
 }
 
@@ -249,7 +249,7 @@ func (s *inputSession) finishRecordingResult(freeze func()) (inputRecordingResul
 		return inputRecordingResult{}, err
 	}
 	// Recording returns an owned snapshot; keep it as the cache until finishing succeeds.
-	s.result = inputRecordingResult{replay: replay, json: encoded}
+	s.result = inputRecordingResult{replay: replay, json: string(encoded)}
 	s.mu.Unlock()
 
 	if err := freezeInputSession(freeze); err != nil {

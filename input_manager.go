@@ -157,7 +157,11 @@ func KeyFromString(key string) Key {
 func (p *inputManager) init(g *Game) {
 	p.mousePos = mathf.Vec2{}
 	p.g = g
-	p.frame = inputFrameState{}
+	// Live recordings preserve empty (rather than nil) edge slices.
+	p.frame = inputFrameState{
+		mouseEvents: []InputReplayMouseEvent{},
+		keyEvents:   []InputReplayKeyEvent{},
+	}
 	p.clickGate.InitWithClock(mouseClickInterval, g.inputClock)
 	p.swipe.InitWithClock(g.inputClock)
 }

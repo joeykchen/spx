@@ -61,11 +61,6 @@ func AnyMouseButtonPressed() bool {
 	return mouseInput.buttons.Load()&0b011 != 0
 }
 
-// GetKeyEvents drains the ordered key edges for the current update.
-func GetKeyEvents(dst []KeyEvent) []KeyEvent {
-	return keyInput.drain(dst)
-}
-
 // GetKeyInput drains key edges and returns a sorted held-key snapshot.
 func GetKeyInput(dst []KeyEvent) ([]KeyEvent, []int64) {
 	return keyInput.drainInput(dst)
@@ -94,14 +89,6 @@ func (s *keyInputState) reset() {
 	s.pressed = make(map[int64]bool)
 	s.keysDown = nil
 	s.mu.Unlock()
-}
-
-func (s *keyInputState) drain(dst []KeyEvent) []KeyEvent {
-	s.mu.Lock()
-	dst = append(dst, s.ready...)
-	s.ready = s.ready[:0]
-	s.mu.Unlock()
-	return dst
 }
 
 func (s *keyInputState) drainInput(dst []KeyEvent) ([]KeyEvent, []int64) {
@@ -211,7 +198,7 @@ func queueKeyEvent(id int64, pressed bool) {
 	} else {
 		delete(keyInput.pressed, id)
 	}
-	keyInput.pending = append(keyInput.pending, KeyEvent{Id: id, IsPressed: pressed})
+	keyInput.pending = append(keyInput.pending, KeyEvent{Key: id, Pressed: pressed})
 	keyInput.mu.Unlock()
 }
 
@@ -232,6 +219,6 @@ func queueMouseEvent(id int64, pressed bool) {
 		buttons &^= mask
 	}
 	mouseInput.buttons.Store(buttons)
-	mouseInput.pending = append(mouseInput.pending, MouseEvent{Id: id, IsPressed: pressed})
+	mouseInput.pending = append(mouseInput.pending, MouseEvent{Button: id, Pressed: pressed})
 	mouseInput.mu.Unlock()
 }

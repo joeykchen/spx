@@ -23,13 +23,7 @@ const (
 )
 
 // KeyEvent is a key transition in input order, independent of its source.
-type KeyEvent struct {
-	Id        int64
-	IsPressed bool
-}
+type KeyEvent = InputReplayKeyEvent
 
 // MouseEvent is a mouse-button transition in input order.
-type MouseEvent struct {
-	Id        int64
-	IsPressed bool
-}
+type MouseEvent = InputReplayMouseEvent
