@@ -148,7 +148,7 @@ func DownloadURL(url, dst string, maxBytes int64, progress func(int64, int64)) (
 	}
 	file = nil
 
-	return ReplaceFile(tmpPath, dst)
+	return fileutil.ReplaceFile(tmpPath, dst)
 }
 
 func (e *HTTPStatusError) Error() string {

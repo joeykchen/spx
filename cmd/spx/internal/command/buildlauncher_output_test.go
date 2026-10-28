@@ -17,6 +17,7 @@
 package command
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -367,10 +368,14 @@ func TestCommitLauncherOutputRevalidatesDestinationAndCleanup(t *testing.T) {
 				}
 				want = "clean staging directory"
 			}
-			if err := commitLauncherOutput(stage, final, launcherOutputProtection{}); err == nil || !strings.Contains(err.Error(), want) {
+			err := commitLauncherOutput(stage, final, launcherOutputProtection{})
+			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Fatalf("commit error = %v, want %q", err, want)
 			}
 			if kind == "protected destination" {
+				if !errors.Is(err, os.ErrPermission) {
+					t.Fatalf("failed commit lost the permission error: %v", err)
+				}
 				if got := readTestFile(t, final); got != "previous launcher" {
 					t.Fatalf("failed commit replaced destination: %q", got)
 				}

@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goplus/spx/v4/internal/base/fileutil"
 	"github.com/goplus/spx/v4/internal/cmd/buildctl/shared"
 	"github.com/goplus/spx/v4/internal/zippreflight"
 )
@@ -356,7 +357,7 @@ func persistNDKArchive(src, dst string, archive androidNDKArchive) (_ string, er
 	if err := verifyNDKArchive(tmpPath, archive); err != nil {
 		return "", err
 	}
-	if err := shared.ReplaceFile(tmpPath, dst); err != nil {
+	if err := fileutil.ReplaceFile(tmpPath, dst); err != nil {
 		return "", err
 	}
 	return dst, nil

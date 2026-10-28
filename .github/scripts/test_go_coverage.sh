@@ -44,8 +44,8 @@ case "${1:-}" in
   windows)
     require_native_platform windows
     covered_test coverage-buildctl-windows.out -v \
-      -run '^Test(ReplaceFileWindows|Windows.*|FetchURLToFileReplacesExistingDestination|SConsEnvironmentCommands|SetupJDKWindowsRequiresManualInstallation)$' \
-      ./internal/cmd/buildctl/shared ./internal/cmd/buildctl/tool
+      -run '^Test(ReplaceFile.*|Windows.*|FetchURLToFileReplacesExistingDestination|SConsEnvironmentCommands|SetupJDKWindowsRequiresManualInstallation)$' \
+      ./internal/base/fileutil ./internal/cmd/buildctl/shared ./internal/cmd/buildctl/tool
     covered_test coverage-engine-windows.out -v \
       -run '^Test(DetectStaleEngineBuildLockProtectsLivePID|EngineBuildLockRecoversExitedPID|EngineLockWaitsForActiveOwner)$' \
       ./internal/cmd/buildctl/engine

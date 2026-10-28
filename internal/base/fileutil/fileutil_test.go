@@ -33,6 +33,75 @@ type zipEntry struct {
 	content string
 }
 
+func TestReplaceFile(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		name := "new destination"
+		if existing {
+			name = "existing destination"
+		}
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			src, dst := filepath.Join(dir, "source"), filepath.Join(dir, "destination")
+			if err := os.WriteFile(src, []byte("replacement"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if existing {
+				if err := os.WriteFile(dst, []byte("existing"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := ReplaceFile(src, dst); err != nil {
+				t.Fatal(err)
+			}
+			if data, err := os.ReadFile(dst); err != nil || string(data) != "replacement" {
+				t.Fatalf("destination = %q, %v", data, err)
+			}
+			if _, err := os.Lstat(src); !os.IsNotExist(err) {
+				t.Fatalf("source still exists: %v", err)
+			}
+		})
+	}
+}
+
+func TestReplaceFilePreservesFilesOnFailure(t *testing.T) {
+	for _, name := range []string{"missing source", "invalid source", "invalid destination"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			src, dst := filepath.Join(dir, "source"), filepath.Join(dir, "destination")
+			if name != "missing source" {
+				if err := os.WriteFile(src, []byte("replacement"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(dst, []byte("existing"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			source, destination := src, dst
+			switch name {
+			case "invalid source":
+				source += "\x00invalid"
+			case "invalid destination":
+				destination += "\x00invalid"
+			}
+			err := ReplaceFile(source, destination)
+			if err == nil {
+				t.Fatal("invalid replacement succeeded")
+			}
+			if name == "missing source" && !os.IsNotExist(err) {
+				t.Fatalf("missing source error = %v, want file not found", err)
+			}
+			if data, err := os.ReadFile(dst); err != nil || string(data) != "existing" {
+				t.Fatalf("failed replacement changed destination: %q, %v", data, err)
+			}
+			if name != "missing source" {
+				if data, err := os.ReadFile(src); err != nil || string(data) != "replacement" {
+					t.Fatalf("failed replacement consumed source: %q, %v", data, err)
+				}
+			}
+		})
+	}
+}
+
 func TestCopyFileCreatesParentAndPreservesMode(t *testing.T) {
 	tempDir := t.TempDir()
 	src := filepath.Join(tempDir, "src.txt")
