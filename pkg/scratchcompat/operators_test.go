@@ -22,8 +22,12 @@ import (
 	"testing"
 
 	"github.com/goplus/spx/v4"
-	"github.com/goplus/spx/v4/scratchcompat"
+	"github.com/goplus/spx/v4/pkg/scratchcompat"
 )
+
+type embeddedValue struct {
+	spx.Value
+}
 
 func TestCompareAndEqual(t *testing.T) {
 	items := spx.NewList("01", "Apple")
@@ -60,6 +64,7 @@ func TestCompareAndEqual(t *testing.T) {
 				{"nonnumeric right operand", 10, "2x", -1, false},
 				{"single wrapper is numeric", value, 10, -1, false},
 				{"nested wrapper stays textual", nested.At(0), 10, 1, false},
+				{"embedded value stays textual", embeddedValue{value}, 10, 1, false},
 				{"pointer stays textual", &value, 10, 1, false},
 				{"nil pointer stays textual", nilPointer, "<nil>", 0, true},
 				{"two ULPs", spx.NewValue(twoULPs), 116, 1, true},
@@ -71,8 +76,14 @@ func TestCompareAndEqual(t *testing.T) {
 					if got := api.compare(tt.a, tt.b); got != tt.compare {
 						t.Errorf("Compare(%v, %v) = %d, want %d", tt.a, tt.b, got, tt.compare)
 					}
+					if got := api.compare(tt.b, tt.a); got != -tt.compare {
+						t.Errorf("Compare(%v, %v) = %d, want %d", tt.b, tt.a, got, -tt.compare)
+					}
 					if got := api.equal(tt.a, tt.b); got != tt.equal {
 						t.Errorf("Equal(%v, %v) = %v, want %v", tt.a, tt.b, got, tt.equal)
+					}
+					if got := api.equal(tt.b, tt.a); got != tt.equal {
+						t.Errorf("Equal(%v, %v) = %v, want %v", tt.b, tt.a, got, tt.equal)
 					}
 				})
 			}

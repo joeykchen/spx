@@ -19,7 +19,7 @@
 package scratchcompat
 
 import (
-	q "github.com/goplus/spx/v4/scratchcompat"
+	q "github.com/goplus/spx/v4/pkg/scratchcompat"
 
 	"reflect"
 
@@ -29,7 +29,7 @@ import (
 func init() {
 	ixgo.RegisterPackage(&ixgo.Package{
 		Name: "scratchcompat",
-		Path: "github.com/goplus/spx/v4/scratchcompat",
+		Path: "github.com/goplus/spx/v4/pkg/scratchcompat",
 		Deps: map[string]string{
 			"github.com/goplus/spx/v4":                  "spx",
 			"github.com/goplus/spx/v4/internal/scratch": "scratch",
@@ -50,7 +50,7 @@ func init() {
 		TypedConsts:   map[string]ixgo.TypedConst{},
 		UntypedConsts: map[string]ixgo.UntypedConst{},
 	})
-	ixgo.RegisterDirectCalls("github.com/goplus/spx/v4/scratchcompat", map[string]ixgo.DirectCallAdapter{
+	ixgo.RegisterDirectCalls("github.com/goplus/spx/v4/pkg/scratchcompat", map[string]ixgo.DirectCallAdapter{
 		"CharAt":         func_CharAt,
 		"Compare":        func_Compare,
 		"Contains":       func_Contains,

@@ -75,7 +75,9 @@ func CharAt(s string, idx int) string {
 
 // Compare compares numbers when both operands are numeric, otherwise strings
 // ignoring case. It returns -1, 0, or 1 without Equal's numeric tolerance.
-func Compare(v1, v2 any) int {
+// Operands of type T are unwrapped once.
+func Compare[T value](v1, v2 any) int {
+	v1, v2 = UnwrapValue[T](v1), UnwrapValue[T](v2)
 	if n1, ok1 := toCompareNumber(v1); ok1 {
 		if n2, ok2 := toCompareNumber(v2); ok2 {
 			switch {
@@ -94,7 +96,9 @@ func Compare(v1, v2 any) int {
 
 // Equal compares like Compare, allowing up to two ULPs of numeric rounding error.
 // Numeric comparisons involving NaN return false.
-func Equal(v1, v2 any) bool {
+// Operands of type T are unwrapped once.
+func Equal[T value](v1, v2 any) bool {
+	v1, v2 = UnwrapValue[T](v1), UnwrapValue[T](v2)
 	if n1, ok1 := toCompareNumber(v1); ok1 {
 		if n2, ok2 := toCompareNumber(v2); ok2 {
 			return nearlyEqual(n1, n2)

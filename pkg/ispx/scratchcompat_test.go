@@ -22,13 +22,13 @@ import (
 
 	"github.com/goplus/ixgo"
 	"github.com/goplus/ixgo/xgobuild"
-	"github.com/goplus/spx/v4/scratchcompat"
+	"github.com/goplus/spx/v4/pkg/scratchcompat"
 )
 
 const scratchCompatSource = `import (
 	"math"
 	"github.com/goplus/spx/v4"
-	compat "github.com/goplus/spx/v4/scratchcompat"
+	compat "github.com/goplus/spx/v4/pkg/scratchcompat"
 )
 
 func main() {
@@ -107,7 +107,7 @@ func TestInterpreterScratchCompat(t *testing.T) {
 							called[name] = true
 							return native.Call(args)
 						})
-						ctx.RegisterExternal("github.com/goplus/spx/v4/scratchcompat."+name, wrapped.Interface())
+						ctx.RegisterExternal("github.com/goplus/spx/v4/pkg/scratchcompat."+name, wrapped.Interface())
 					}
 				}
 				var options []InitOption

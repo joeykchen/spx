@@ -55,14 +55,14 @@ type List struct {
 
 // NewValue creates a new Value initialized with the given object.
 func NewValue(o obj) Value {
-	return Value{data: unwrapValue(o)}
+	return Value{data: scratch.UnwrapValue[Value](o)}
 }
 
 // NewList creates a new List initialized with the given elements.
 func NewList(l ...obj) List {
 	data := make([]obj, len(l))
 	for i, v := range l {
-		data[i] = unwrapValue(v)
+		data[i] = scratch.UnwrapValue[Value](v)
 	}
 	return List{data: data}
 }
@@ -73,7 +73,7 @@ func (p Value) Raw() any {
 }
 
 func (p Value) Equal(v obj) bool {
-	return Equal(p.data, v)
+	return scratch.Equal[Value](p.data, v)
 }
 
 func (p Value) String() string {
@@ -94,7 +94,7 @@ func (p *Value) Set(v obj) {
 	if p == nil {
 		return
 	}
-	p.data = unwrapValue(v)
+	p.data = scratch.UnwrapValue[Value](v)
 }
 
 func (p *List) Init(data ...obj) {
@@ -130,7 +130,7 @@ func (p *List) Contains(v obj) bool {
 
 // Append adds the element v to the end of the list.
 func (p *List) Append(v obj) {
-	p.data = append(p.data, unwrapValue(v))
+	p.data = append(p.data, scratch.UnwrapValue[Value](v))
 }
 
 // Set sets the element at the specified index i to v.
@@ -140,7 +140,7 @@ func (p *List) Set(i Pos, v obj) {
 		i = Pos(getListPos(i, n))
 	}
 	if i >= 0 && int(i) < n {
-		p.data[i] = unwrapValue(v)
+		p.data[i] = scratch.UnwrapValue[Value](v)
 	}
 }
 
@@ -153,7 +153,7 @@ func (p *List) Insert(i Pos, v obj) {
 		}
 		i = Pos(getListPos(i, n+1))
 	}
-	val := unwrapValue(v)
+	val := scratch.UnwrapValue[Value](v)
 	p.data = append(p.data, val)
 	if int(i) < n {
 		copy(p.data[i+1:], p.data[i:])
@@ -192,7 +192,7 @@ func (p *List) At(i Pos) Value {
 // Returns Invalid (-1) if v is not found.
 func (p *List) IndexOf(v obj) Pos {
 	for i, item := range p.data {
-		if Equal(item, v) {
+		if scratch.Equal[Value](item, v) {
 			return Pos(i)
 		}
 	}
@@ -202,13 +202,6 @@ func (p *List) IndexOf(v obj) Pos {
 // Clear removes all elements from the list.
 func (p *List) Clear() {
 	p.data = p.data[:0]
-}
-
-func unwrapValue(v obj) any {
-	if o, ok := v.(Value); ok {
-		return o.data
-	}
-	return v
 }
 
 func getListPos(i Pos, n int) int {

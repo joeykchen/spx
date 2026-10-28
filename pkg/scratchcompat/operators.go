@@ -62,18 +62,11 @@ func CharAt(s string, idx int) string {
 // ignoring case. It accepts spx.Value and compound signs from older converters.
 // It returns -1, 0, or 1 without Equal's numeric tolerance.
 func Compare(a, b any) int {
-	return scratch.Compare(unwrapValue(a), unwrapValue(b))
+	return scratch.Compare[spx.Value](a, b)
 }
 
 // Equal compares like Compare, allowing up to two ULPs of numeric rounding error.
 // Numeric comparisons involving NaN return false. It accepts spx.Value operands.
 func Equal(a, b any) bool {
-	return scratch.Equal(unwrapValue(a), unwrapValue(b))
-}
-
-func unwrapValue(v any) any {
-	if value, ok := v.(spx.Value); ok {
-		return value.Raw()
-	}
-	return v
+	return scratch.Equal[spx.Value](a, b)
 }

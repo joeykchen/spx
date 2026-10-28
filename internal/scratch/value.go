@@ -23,6 +23,19 @@ import (
 	"strings"
 )
 
+type value interface {
+	Raw() any
+}
+
+// UnwrapValue unwraps one layer of T. Callers use a concrete value type so
+// pointers and other types with a Raw method retain their original behavior.
+func UnwrapValue[T value](v any) any {
+	if v, ok := v.(T); ok {
+		return v.Raw()
+	}
+	return v
+}
+
 // ToString returns "" for nil and fmt.Sprint(v) otherwise.
 func ToString(v any) string {
 	if v == nil {
