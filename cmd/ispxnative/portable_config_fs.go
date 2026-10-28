@@ -39,13 +39,11 @@ type portableConfigFS struct {
 
 type portableConfigRoot struct {
 	fs.File
-	directory fs.ReadDirFile
-	overlay   *portableConfigFS
-	once      sync.Once
-	mu        sync.Mutex
-	entries   []fs.DirEntry
-	err       error
-	offset    int
+	overlay     *portableConfigFS
+	mu          sync.Mutex
+	initialized bool
+	entries     []fs.DirEntry
+	err         error
 }
 
 type portableConfigFile struct {
@@ -69,8 +67,7 @@ func (f *portableConfigFS) Open(name string) (fs.File, error) {
 		return nil, err
 	}
 	if name == "." {
-		directory, _ := file.(fs.ReadDirFile)
-		return &portableConfigRoot{File: file, directory: directory, overlay: f}, nil
+		return &portableConfigRoot{File: file, overlay: f}, nil
 	}
 	return file, nil
 }
@@ -105,34 +102,34 @@ func (f *portableConfigFS) overlayRootEntries(entries []fs.DirEntry) []fs.DirEnt
 }
 
 func (f *portableConfigRoot) ReadDir(n int) ([]fs.DirEntry, error) {
-	f.once.Do(func() {
-		if f.directory == nil {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.initialized {
+		f.initialized = true
+		directory, ok := f.File.(fs.ReadDirFile)
+		if !ok {
 			f.err = &fs.PathError{Op: "readdir", Path: ".", Err: fs.ErrInvalid}
 		} else {
-			entries, err := f.directory.ReadDir(-1)
-			if err != nil {
-				f.err = err
-			} else {
-				f.entries = f.overlay.overlayRootEntries(entries)
+			f.entries, f.err = directory.ReadDir(-1)
+			if f.err == nil {
+				f.entries = f.overlay.overlayRootEntries(f.entries)
 			}
 		}
-	})
+	}
 	if f.err != nil {
 		return nil, f.err
 	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
 	if n <= 0 {
-		entries := f.entries[f.offset:]
-		f.offset = len(f.entries)
+		entries := f.entries
+		f.entries = nil
 		return entries, nil
 	}
-	if f.offset >= len(f.entries) {
+	if len(f.entries) == 0 {
 		return nil, io.EOF
 	}
-	end := min(f.offset+n, len(f.entries))
-	entries := f.entries[f.offset:end]
-	f.offset = end
+	end := min(n, len(f.entries))
+	entries := f.entries[:end]
+	f.entries = f.entries[end:]
 	if len(entries) < n {
 		return entries, io.EOF
 	}

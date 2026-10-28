@@ -28,12 +28,11 @@ import (
 	"runtime"
 
 	"github.com/goplus/spx/v4/internal/projectbundle"
-	"github.com/goplus/spx/v4/internal/projectpolicy"
 	"github.com/goplus/spx/v4/internal/runtimebundle"
 	"github.com/goplus/spx/v4/internal/runtimepayload"
 )
 
-func buildSourceBridge(ctx context.Context, cfg Config, bridgeName string, streams IO) (string, func(), error) {
+func buildSourceBridge(ctx context.Context, cfg Config, bridgeName string) (string, func(), error) {
 	if err := cfg.validateGraphInputs(); err != nil {
 		return "", nil, err
 	}
@@ -51,18 +50,18 @@ func buildSourceBridge(ctx context.Context, cfg Config, bridgeName string, strea
 	cleanup := func() { _ = os.RemoveAll(workDir) }
 	if keepWork {
 		cleanup = func() {}
-		if streams.Stderr != nil {
-			_, _ = fmt.Fprintf(streams.Stderr, "SPXBRIDGEWORK=%s\n", workDir)
+		if cfg.IO.Stderr != nil {
+			_, _ = fmt.Fprintf(cfg.IO.Stderr, "SPXBRIDGEWORK=%s\n", workDir)
 		}
 	}
 	bridgePath := filepath.Join(workDir, bridgeName)
 	args := sourceBridgeBuildArgs(cfg, bridgePath)
 	command := exec.CommandContext(ctx, cfg.GoCommand, args...)
 	command.Dir = cfg.WorkDir
-	command.Env = sourceBridgeEnv(cfg, streams.Env)
-	command.Stdin = streams.Stdin
-	command.Stdout = streams.Stdout
-	command.Stderr = streams.Stderr
+	command.Env = sourceBridgeEnv(cfg, cfg.IO.Env)
+	command.Stdin = cfg.IO.Stdin
+	command.Stdout = cfg.IO.Stdout
+	command.Stderr = cfg.IO.Stderr
 	if err := command.Run(); err != nil {
 		cleanup()
 		return "", nil, fmt.Errorf("launchpack: build source interpreter bridge: %w", err)
@@ -107,21 +106,21 @@ func bridgeFileName(goos, goarch string) (string, error) {
 	return "gdspx-" + goos + "-" + goarch + extension, nil
 }
 
-func buildLauncher(ctx context.Context, cfg Config, assets Assets, configSnapshot projectpolicy.PortableConfigSnapshot, streams IO) (string, string, error) {
-	projectConfig, err := prepareProjectBundleConfig(cfg, configSnapshot)
+func buildLauncher(ctx context.Context, cfg Config, assets Assets) (string, string, error) {
+	projectConfig, err := prepareProjectBundleConfig(cfg)
 	if err != nil {
 		return "", "", err
 	}
 	var payloadDigest, manifestDigest string
-	err = compileLauncher(ctx, cfg, streams, func(workDir string, dst io.Writer) (string, string, error) {
+	err = compileLauncher(ctx, cfg, func(workDir string, dst io.Writer) (string, string, error) {
 		var buildErr error
-		payloadDigest, manifestDigest, buildErr = writeLauncherPayload(workDir, dst, cfg, assets, projectConfig, streams)
+		payloadDigest, manifestDigest, buildErr = writeLauncherPayload(workDir, dst, cfg, assets, projectConfig)
 		return payloadDigest, manifestDigest, buildErr
 	})
 	return payloadDigest, manifestDigest, err
 }
 
-func writeLauncherPayload(workDir string, dst io.Writer, cfg Config, assets Assets, projectConfig projectbundle.Config, streams IO) (payloadDigest, manifestDigest string, err error) {
+func writeLauncherPayload(workDir string, dst io.Writer, cfg Config, assets Assets, projectConfig projectbundle.Config) (payloadDigest, manifestDigest string, err error) {
 	projectPath := filepath.Join(workDir, "project.zip")
 	projectFile, err := os.OpenFile(projectPath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
@@ -250,11 +249,7 @@ func writeLauncherPayload(workDir string, dst io.Writer, cfg Config, assets Asse
 		{Name: runtimepayload.ProjectZipPath, Mode: 0o644, ReaderAt: projectFile, Size: projectInfo.Size()},
 	}
 	payloadDigest, manifestDigest, err = runtimepayload.BuildTo(dst, runtimepayload.BuildConfig{
-		SPX: runtimepayload.SourceIdentity{
-			SelectedPath: cfg.Source.SelectedPath, SelectedVersion: cfg.Source.SelectedVersion,
-			EffectivePath: cfg.Source.EffectivePath, EffectiveVersion: cfg.Source.EffectiveVersion,
-			Main: cfg.Source.Main, SourceMode: cfg.Source.SourceMode,
-		},
+		SPX:    cfg.Source,
 		Target: runtimepayload.Target{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH},
 		Engine: runtimepayload.Engine{
 			RuntimeVersion: assets.Lock.RuntimeVersion, RuntimeABI: assets.Lock.RuntimeABI,
@@ -275,8 +270,8 @@ func writeLauncherPayload(workDir string, dst io.Writer, cfg Config, assets Asse
 			return "", "", err
 		}
 	}
-	if traceEnabled(cfg.BuildFlags) && streams.Stderr != nil {
-		_, _ = fmt.Fprintf(streams.Stderr, "launchpack: project=%s payload=%s engine=%s bridge=%s\n", projectDigest, payloadDigest, engineBundle.Digest, bridgeBundle.Digest)
+	if traceEnabled(cfg.BuildFlags) && cfg.IO.Stderr != nil {
+		_, _ = fmt.Fprintf(cfg.IO.Stderr, "launchpack: project=%s payload=%s engine=%s bridge=%s\n", projectDigest, payloadDigest, engineBundle.Digest, bridgeBundle.Digest)
 	}
 	return payloadDigest, manifestDigest, nil
 }

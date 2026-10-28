@@ -17,14 +17,19 @@
 package launchpack
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/goplus/spx/v4/internal/projectbundle"
 	"github.com/goplus/spx/v4/internal/projectpolicy"
 	"github.com/goplus/spx/v4/internal/release"
 )
@@ -163,23 +168,50 @@ func TestLauncherPublicEntryPointsRejectNilContext(t *testing.T) {
 	}
 }
 
-func TestRuntimeLockRejectsIncompatibleIdentity(t *testing.T) {
+func TestRuntimeLockSelectsDefaultOrExplicitLock(t *testing.T) {
+	explicit := release.DefaultRuntimeLock()
+	explicit.RuntimeVersion = "9.9.9"
+	explicit.RuntimeABI++
+	for _, tt := range []struct {
+		name string
+		cfg  Config
+		want release.RuntimeLock
+	}{
+		{name: "default", want: release.DefaultRuntimeLock()},
+		{name: "explicit", cfg: Config{RuntimeLock: explicit}, want: explicit},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := runtimeLock(tt.cfg)
+			if err != nil || !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("runtimeLock = %#v, %v, want %#v", got, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestRuntimeAcquisitionRejectsInvalidLockBeforeMaterialization(t *testing.T) {
 	for _, tt := range []struct {
 		name, want string
 		change     func(*Config)
 	}{
-		{"invalid lock", "runtime", func(c *Config) { c.RuntimeLock.RuntimeVersion = "invalid version" }},
-		{"version", "runtime version", func(c *Config) { c.RuntimeIdentity.Version = "9.9.9" }},
-		{"abi", "runtime ABI", func(c *Config) { c.RuntimeIdentity.ABI = c.RuntimeLock.RuntimeABI + 1 }},
-		{"os", "runtime target", func(c *Config) { c.RuntimeIdentity.GOOS = "other" }},
-		{"arch", "runtime target", func(c *Config) { c.RuntimeIdentity.GOARCH = "other" }},
+		{"version", "invalid runtime version", func(c *Config) { c.RuntimeLock.RuntimeVersion = "invalid version" }},
+		{"abi", "runtime ABI", func(c *Config) { c.RuntimeLock.RuntimeABI = 0 }},
+		{"schema", "runtime lock schema", func(c *Config) { c.RuntimeLock.Schema = 0 }},
+		{"required assets", "required_assets", func(c *Config) { c.RuntimeLock.RequiredAssets = nil }},
 		{"cache", "runtime cache root", func(c *Config) { c.RuntimeCacheRoot = "relative" }},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := Config{RuntimeLock: release.DefaultRuntimeLock()}
+			cache := filepath.Join(t.TempDir(), "cache")
+			cfg := Config{
+				RuntimeLock: release.DefaultRuntimeLock(), RuntimeCacheRoot: cache,
+				RuntimeManifestPath: filepath.Join(t.TempDir(), "unavailable-manifest.json"),
+			}
 			tt.change(&cfg)
 			if _, err := AcquireRuntimeAssets(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("AcquireRuntimeAssets error = %v, want %q", err, tt.want)
+			}
+			if _, err := os.Stat(cache); !os.IsNotExist(err) {
+				t.Fatalf("invalid configuration materialized cache: %v", err)
 			}
 		})
 	}
@@ -205,8 +237,8 @@ func TestProjectBundleIncludesSortedUniqueSourcesAndResources(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			cfg := Config{ProjectDir: projectDir, ProjectFile: filepath.Join(projectDir, "main.spx"), ProjectExt: ".spx", PackDir: "assets", PackIndex: "index.json"}
-			bundle, err := prepareProjectBundleConfig(cfg, snapshot)
+			cfg := Config{ProjectDir: projectDir, ProjectFile: filepath.Join(projectDir, "main.spx"), ProjectExt: ".spx", PackDir: "assets", PackIndex: "index.json", PortableConfig: snapshot}
+			bundle, err := prepareProjectBundleConfig(cfg)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -215,6 +247,82 @@ func TestProjectBundleIncludesSortedUniqueSourcesAndResources(t *testing.T) {
 			}
 			if !slices.Equal(bundle.ProjectFiles, tc.want) {
 				t.Fatalf("project files = %q, want %q", bundle.ProjectFiles, tc.want)
+			}
+		})
+	}
+}
+
+func TestProjectBundleUsesCapturedPortableConfig(t *testing.T) {
+	const original = "{\"title\":\"captured\"}\n"
+	for _, tt := range []struct {
+		name    string
+		present bool
+		change  func(*testing.T, string)
+	}{
+		{name: "absent"},
+		{name: "present", present: true},
+		{name: "changed", present: true, change: func(t *testing.T, path string) { writeProjectTestFile(t, path, "{}") }},
+		{name: "removed", present: true, change: func(t *testing.T, path string) {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "replaced with same bytes", present: true, change: func(t *testing.T, path string) {
+			if err := os.Rename(path, path+".old"); err != nil {
+				t.Fatal(err)
+			}
+			writeProjectTestFile(t, path, original)
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validLaunchpackConfig(t)
+			path := filepath.Join(cfg.ProjectDir, ".config")
+			if tt.present {
+				writeProjectTestFile(t, path, original)
+			}
+			var err error
+			cfg.PortableConfig, err = projectpolicy.SnapshotPortableConfig(cfg.ProjectDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.change != nil {
+				tt.change(t, path)
+			}
+			bundle, err := prepareProjectBundleConfig(cfg)
+			if tt.change != nil {
+				if err == nil || !strings.Contains(err.Error(), "changed after validation") {
+					t.Fatalf("changed snapshot accepted: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Changes after revalidation must not replace the captured bytes or
+			// introduce a config that was absent from the validated project.
+			writeProjectTestFile(t, path, "{\"title\":\"later\"}")
+			var data bytes.Buffer
+			if _, err := projectbundle.WriteArchive(&data, bundle); err != nil {
+				t.Fatal(err)
+			}
+			archive, err := zip.NewReader(bytes.NewReader(data.Bytes()), int64(data.Len()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			file, err := archive.Open(".config")
+			if !tt.present {
+				if !os.IsNotExist(err) {
+					t.Fatalf("absent config included in archive: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+			contents, err := io.ReadAll(file)
+			if err != nil || string(contents) != original {
+				t.Fatalf("archived config = %q, %v", contents, err)
 			}
 		})
 	}
@@ -259,7 +367,7 @@ func TestProjectAllowlistRejectsUnsafeOrIncompleteProjects(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validLaunchpackConfig(t)
 			tt.change(t, &cfg)
-			if _, err := prepareProjectBundleConfig(cfg, cfg.PortableConfig); err == nil || !strings.Contains(err.Error(), tt.want) {
+			if _, err := prepareProjectBundleConfig(cfg); err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("prepareProjectBundleConfig error = %v, want %q", err, tt.want)
 			}
 		})

@@ -67,7 +67,7 @@ func renderGeneratedLauncher(payloadDigest, manifestDigest string) []byte {
 	return fmt.Appendf(nil, generatedLauncherTemplate, strconv.Quote(payloadDigest), strconv.Quote(manifestDigest))
 }
 
-func compileLauncher(ctx context.Context, cfg Config, streams IO, buildPayload payloadBuilder) error {
+func compileLauncher(ctx context.Context, cfg Config, buildPayload payloadBuilder) error {
 	if err := cfg.validateGraphInputs(); err != nil {
 		return err
 	}
@@ -82,8 +82,8 @@ func compileLauncher(ctx context.Context, cfg Config, streams IO, buildPayload p
 	}
 	keepWork := hasBuildFlag(cfg.BuildFlags, "work")
 	if keepWork {
-		if streams.Stderr != nil {
-			_, _ = fmt.Fprintf(streams.Stderr, "SPXWORK=%s\n", workDir)
+		if cfg.IO.Stderr != nil {
+			_, _ = fmt.Fprintf(cfg.IO.Stderr, "SPXWORK=%s\n", workDir)
 		}
 	} else {
 		defer os.RemoveAll(workDir)
@@ -116,10 +116,10 @@ func compileLauncher(ctx context.Context, cfg Config, streams IO, buildPayload p
 	args = append(args, "-buildmode=exe", "-o", cfg.Output, mainPath)
 	command := exec.CommandContext(ctx, cfg.GoCommand, args...)
 	command.Dir = cfg.WorkDir
-	command.Env = hostGoEnv(cfg, streams.Env)
-	command.Stdin = streams.Stdin
-	command.Stdout = streams.Stdout
-	command.Stderr = streams.Stderr
+	command.Env = hostGoEnv(cfg, cfg.IO.Env)
+	command.Stdin = cfg.IO.Stdin
+	command.Stdout = cfg.IO.Stdout
+	command.Stderr = cfg.IO.Stderr
 	if err := cfg.verifyGraph(ctx, "before launcher build"); err != nil {
 		return err
 	}
@@ -133,7 +133,7 @@ func compileLauncher(ctx context.Context, cfg Config, streams IO, buildPayload p
 		return err
 	}
 	if runtime.GOOS == "darwin" {
-		if err := signDarwinLauncher(ctx, cfg.Output, streams); err != nil {
+		if err := signDarwinLauncher(ctx, cfg.Output, cfg.IO); err != nil {
 			return err
 		}
 	}

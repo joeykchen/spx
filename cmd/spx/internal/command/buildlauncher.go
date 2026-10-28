@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/goplus/spx/v4/internal/launchpack"
 	"github.com/goplus/spx/v4/internal/projectpolicy"
@@ -81,7 +80,7 @@ func (cmd *CmdTool) runBuildLauncher() error {
 	config := launchpack.Config{
 		ProjectDir: project.dir, ProjectFile: project.file, ProjectExt: project.extension,
 		PackDir: project.packDir, PackIndex: project.packIndex, PortableConfig: snapshot,
-		RuntimeSourceRoot: source.root, RuntimeIdentity: launchpack.RuntimeIdentity{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH},
+		RuntimeSourceRoot: source.root,
 		Source: launchpack.SourceIdentity{
 			SelectedPath: spxModulePath, SelectedVersion: source.selectedVersion,
 			EffectivePath: source.effectivePath, EffectiveVersion: source.effectiveVersion,
