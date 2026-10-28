@@ -35,10 +35,11 @@ func init() {
 			"github.com/goplus/spbase/mathf":                  "mathf",
 			"github.com/goplus/spx/v4/internal/input/keycode": "keycode",
 			"github.com/goplus/spx/v4/internal/log":           "log",
+			"maps":                                            "maps",
 			"math":                                            "math",
 			"reflect":                                         "reflect",
 			"runtime/debug":                                   "debug",
-			"sort":                                            "sort",
+			"slices":                                          "slices",
 			"sync":                                            "sync",
 		},
 		Interfaces: map[string]reflect.Type{
