@@ -91,7 +91,7 @@ func TestBuildSourceBridgeChecksGraphAndCleansFailures(t *testing.T) {
 	}
 	cfg := validLaunchpackConfig(t)
 	cfg.BridgePackage = ""
-	if _, _, err := buildSourceBridge(context.Background(), cfg, "bridge.so", IO{}); err == nil || !strings.Contains(err.Error(), "bridge package") {
+	if _, _, err := buildSourceBridge(context.Background(), cfg, "bridge.so"); err == nil || !strings.Contains(err.Error(), "bridge package") {
 		t.Fatalf("missing bridge package: %v", err)
 	}
 	for _, goos := range []string{"linux", "darwin", "windows"} {

@@ -66,11 +66,11 @@ func defaultRuntimeAssetDependencies() runtimeAssetDependencies {
 }
 
 // acquireRuntimeAssets obtains one verified Engine/PCK pair.
-func acquireRuntimeAssets(ctx context.Context, cfg Config, streams IO, lock release.RuntimeLock) (Assets, error) {
-	return acquireRuntimeAssetsWith(ctx, cfg, streams, lock, defaultRuntimeAssetDependencies())
+func acquireRuntimeAssets(ctx context.Context, cfg Config, lock release.RuntimeLock) (Assets, error) {
+	return acquireRuntimeAssetsWith(ctx, cfg, lock, defaultRuntimeAssetDependencies())
 }
 
-func acquireRuntimeAssetsWith(ctx context.Context, cfg Config, streams IO, lock release.RuntimeLock, dependencies runtimeAssetDependencies) (Assets, error) {
+func acquireRuntimeAssetsWith(ctx context.Context, cfg Config, lock release.RuntimeLock, dependencies runtimeAssetDependencies) (Assets, error) {
 	if ctx == nil {
 		return Assets{}, errors.New("launchpack: nil context")
 	}
@@ -80,7 +80,7 @@ func acquireRuntimeAssetsWith(ctx context.Context, cfg Config, streams IO, lock 
 	if dependencies.fetch == nil || dependencies.cacheRoot == nil {
 		return Assets{}, errors.New("launchpack: incomplete runtime acquisition dependencies")
 	}
-	env := runtimeEnvironment(cfg, streams.Env)
+	env := runtimeEnvironment(cfg, cfg.IO.Env)
 	spec, err := release.HostRuntimeSpecFor(lock, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return Assets{}, err

@@ -25,7 +25,7 @@ import (
 	"runtime"
 )
 
-func buildSourceBridge(ctx context.Context, cfg Config, bridgeName string, streams IO) (string, func(), error) {
+func buildSourceBridge(ctx context.Context, cfg Config, bridgeName string) (string, func(), error) {
 	if err := cfg.validateGraphInputs(); err != nil {
 		return "", nil, err
 	}
@@ -43,18 +43,18 @@ func buildSourceBridge(ctx context.Context, cfg Config, bridgeName string, strea
 	cleanup := func() { _ = os.RemoveAll(workDir) }
 	if keepWork {
 		cleanup = func() {}
-		if streams.Stderr != nil {
-			_, _ = fmt.Fprintf(streams.Stderr, "SPXBRIDGEWORK=%s\n", workDir)
+		if cfg.IO.Stderr != nil {
+			_, _ = fmt.Fprintf(cfg.IO.Stderr, "SPXBRIDGEWORK=%s\n", workDir)
 		}
 	}
 	bridgePath := filepath.Join(workDir, bridgeName)
 	args := sourceBridgeBuildArgs(cfg, bridgePath)
 	command := exec.CommandContext(ctx, cfg.GoCommand, args...)
 	command.Dir = cfg.WorkDir
-	command.Env = sourceBridgeEnv(cfg, streams.Env)
-	command.Stdin = streams.Stdin
-	command.Stdout = streams.Stdout
-	command.Stderr = streams.Stderr
+	command.Env = sourceBridgeEnv(cfg, cfg.IO.Env)
+	command.Stdin = cfg.IO.Stdin
+	command.Stdout = cfg.IO.Stdout
+	command.Stderr = cfg.IO.Stderr
 	if err := command.Run(); err != nil {
 		cleanup()
 		return "", nil, fmt.Errorf("launchpack: build source interpreter bridge: %w", err)
