@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package shared
+package fileutil
 
 import (
 	"os"
@@ -33,6 +33,7 @@ const (
 	windowsLongPathLimit    = 248
 )
 
+// ReplaceFile atomically replaces dst with a same-filesystem src.
 func ReplaceFile(src, dst string) error {
 	if _, err := os.Lstat(dst); err == nil {
 		if err := replaceExistingFile(src, dst); err == nil {
