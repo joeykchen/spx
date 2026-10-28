@@ -30,10 +30,8 @@ func DownloadEngineAssets(cfg DownloadConfig, repoRoot string) error {
 			return err
 		}
 	}
-	if env.verifyManifest {
-		if err := loadEngineAssetManifest(&env); err != nil {
-			return err
-		}
+	if err := loadEngineAssetManifest(&env); err != nil {
+		return err
 	}
 
 	if cfg.Runtime {

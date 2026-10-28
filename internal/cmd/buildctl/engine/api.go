@@ -45,10 +45,8 @@ func PrepareHostEditorAsset(repoRoot, assetDir string) error {
 			return err
 		}
 	}
-	if env.verifyManifest {
-		if err := loadEngineAssetManifest(&env); err != nil {
-			return err
-		}
+	if err := loadEngineAssetManifest(&env); err != nil {
+		return err
 	}
 	return downloadPlatformAssets(env, "editor", true)
 }
