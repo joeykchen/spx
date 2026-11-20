@@ -853,6 +853,27 @@ func TestDownloadRuntimePackValidatesBeforeInstalling(t *testing.T) {
 	}
 }
 
+func TestDownloadRuntimePackKeepsLocalArchiveInCache(t *testing.T) {
+	env := newEngineDownloadFixture(t, "")
+	env.assetDir = env.cacheDir
+	archive := filepath.Join(env.assetDir, release.RuntimeAssetZipName)
+	if err := writeZipFixture(archive, map[string]string{"gdspxrt.pck": "pack", "runtime.gdextension": "extension"}); err != nil {
+		t.Fatal(err)
+	}
+	input, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := downloadRuntimePack(env); err != nil {
+		t.Fatal(err)
+	}
+	assertEngineDownloadFiles(t, env, map[string]string{
+		archive: string(input),
+		filepath.Join(env.goBinDir, "gdspxrttest.pck"):     "pack",
+		filepath.Join(env.goBinDir, "runtime.gdextension"): "extension",
+	})
+}
+
 func TestDownloadRuntimePackPreservesInstalledFilesOnIOFailure(t *testing.T) {
 	for _, failure := range []string{"unreadable archive", "read-only cache", "occupied extension destination"} {
 		t.Run(failure, func(t *testing.T) {

@@ -32,36 +32,45 @@ type binaryInstall struct {
 }
 
 func downloadBinariesFromZip(env engineDownloadEnv, zipName string, installs ...binaryInstall) error {
-	zipPath := filepath.Join(env.cacheDir, zipName)
-	if err := fetchEngineAsset(env, zipName, zipPath); err != nil {
+	return withExtractedEngineArchive(env, zipName, func(extractDir string) error {
+		for _, install := range installs {
+			info, err := os.Stat(filepath.Join(extractDir, install.assetName))
+			if err != nil {
+				return fmt.Errorf("engine archive %s is missing %s: %w", zipName, install.assetName, err)
+			}
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("engine archive entry %s is not a regular file", install.assetName)
+			}
+		}
+		for _, install := range installs {
+			if err := copyEngineAssetAtomically(filepath.Join(extractDir, install.assetName), install.dst); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// Each download owns both the staged archive and its extracted contents.
+func withExtractedEngineArchive(env engineDownloadEnv, zipName string, install func(string) error) error {
+	if err := os.MkdirAll(env.cacheDir, 0o755); err != nil {
 		return err
 	}
-	defer os.Remove(zipPath)
-
-	extractDir, err := os.MkdirTemp(env.cacheDir, "engine-zip-*")
+	work, err := os.MkdirTemp(env.cacheDir, "engine-zip-*")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(extractDir)
+	defer os.RemoveAll(work)
 
-	if err := extractZip(zipPath, extractDir); err != nil {
+	archive := filepath.Join(work, "download")
+	if err := fetchEngineAsset(env, zipName, archive); err != nil {
 		return err
 	}
-	for _, install := range installs {
-		info, err := os.Stat(filepath.Join(extractDir, install.assetName))
-		if err != nil {
-			return fmt.Errorf("engine archive %s is missing %s: %w", zipName, install.assetName, err)
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("engine archive entry %s is not a regular file", install.assetName)
-		}
+	contents := filepath.Join(work, "contents")
+	if err := extractZip(archive, contents); err != nil {
+		return err
 	}
-	for _, install := range installs {
-		if err := copyEngineAssetAtomically(filepath.Join(extractDir, install.assetName), install.dst); err != nil {
-			return err
-		}
-	}
-	return nil
+	return install(contents)
 }
 
 func extractZip(srcZip, dstDir string) error {

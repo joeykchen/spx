@@ -25,23 +25,13 @@ import (
 )
 
 func downloadRuntimePack(env engineDownloadEnv) error {
+	return withExtractedEngineArchive(env, release.RuntimeAssetZipName, func(dir string) error {
+		return installRuntimePack(env, dir)
+	})
+}
+
+func installRuntimePack(env engineDownloadEnv, extractDir string) error {
 	versionedPack := filepath.Join(env.goBinDir, fmt.Sprintf("gdspxrt%s.pck", env.version))
-	zipName := release.RuntimeAssetZipName
-	zipPath := filepath.Join(env.cacheDir, zipName)
-	if err := fetchEngineAsset(env, zipName, zipPath); err != nil {
-		return err
-	}
-	defer os.Remove(zipPath)
-
-	extractDir, err := os.MkdirTemp(env.cacheDir, "runtime-pck-*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(extractDir)
-
-	if err := extractZip(zipPath, extractDir); err != nil {
-		return err
-	}
 	entries, err := os.ReadDir(extractDir)
 	if err != nil {
 		return err
