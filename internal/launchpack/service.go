@@ -79,23 +79,7 @@ func AcquireRuntimeAssets(ctx context.Context, cfg Config) (Assets, error) {
 	if err != nil {
 		return Assets{}, err
 	}
-	return acquireRuntimeAssets(ctx, cfg, lock)
-}
-
-// BuildSourceBridge compiles the configured source bridge and returns a path
-// plus a cleanup function. Provenance checks belong to the caller.
-func BuildSourceBridge(ctx context.Context, cfg Config) (string, func(), error) {
-	if ctx == nil {
-		return "", nil, fmt.Errorf("launchpack: nil context")
-	}
-	if err := cfg.validateGraphInputs(); err != nil {
-		return "", nil, err
-	}
-	name, err := bridgeFileName(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		return "", nil, err
-	}
-	return buildSourceBridge(ctx, cfg, name)
+	return acquireRuntimeAssetsWith(ctx, cfg, lock, defaultRuntimeAssetDependencies())
 }
 
 func (c Config) verifyGraph(ctx context.Context, phase string) error {

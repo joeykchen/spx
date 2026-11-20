@@ -65,11 +65,6 @@ func defaultRuntimeAssetDependencies() runtimeAssetDependencies {
 	}
 }
 
-// acquireRuntimeAssets obtains one verified Engine/PCK pair.
-func acquireRuntimeAssets(ctx context.Context, cfg Config, lock release.RuntimeLock) (Assets, error) {
-	return acquireRuntimeAssetsWith(ctx, cfg, lock, defaultRuntimeAssetDependencies())
-}
-
 func acquireRuntimeAssetsWith(ctx context.Context, cfg Config, lock release.RuntimeLock, dependencies runtimeAssetDependencies) (Assets, error) {
 	if ctx == nil {
 		return Assets{}, errors.New("launchpack: nil context")

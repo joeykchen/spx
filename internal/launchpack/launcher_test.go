@@ -460,7 +460,7 @@ func TestBuildWorkDirectoriesReportUnavailableTemporaryStorage(t *testing.T) {
 					return "", "", nil
 				})
 			} else {
-				path, cleanup, buildErr := buildSourceBridge(context.Background(), cfg, "bridge.so")
+				path, cleanup, buildErr := BuildSourceBridge(context.Background(), cfg)
 				err = buildErr
 				if path != "" || cleanup != nil {
 					t.Fatalf("failed bridge build returned path %q or cleanup", path)
@@ -477,7 +477,7 @@ func TestBuildWorkDirectoriesReportUnavailableTemporaryStorage(t *testing.T) {
 	}
 	cfg := validLaunchpackConfig(t)
 	cfg.BuildFlags = []string{"-unsupported"}
-	if _, _, err := buildSourceBridge(context.Background(), cfg, "bridge.so"); err == nil || !strings.Contains(err.Error(), "unsupported build flag") {
+	if _, _, err := BuildSourceBridge(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "unsupported build flag") {
 		t.Fatalf("invalid source bridge graph = %v", err)
 	}
 }

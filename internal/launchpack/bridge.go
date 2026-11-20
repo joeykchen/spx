@@ -25,8 +25,17 @@ import (
 	"runtime"
 )
 
-func buildSourceBridge(ctx context.Context, cfg Config, bridgeName string) (string, func(), error) {
+// BuildSourceBridge compiles the configured source bridge and returns a path
+// plus a cleanup function. Provenance checks belong to the caller.
+func BuildSourceBridge(ctx context.Context, cfg Config) (string, func(), error) {
+	if ctx == nil {
+		return "", nil, fmt.Errorf("launchpack: nil context")
+	}
 	if err := cfg.validateGraphInputs(); err != nil {
+		return "", nil, err
+	}
+	bridgeName, err := bridgeFileName(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
 		return "", nil, err
 	}
 	if err := cfg.verifyGraph(ctx, "before source bridge build"); err != nil {
