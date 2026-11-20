@@ -193,7 +193,7 @@ func findLocalEngineAsset(assetDir, name string) (string, error) {
 	}
 }
 
-func copyEngineAssetAtomically(src, dst string) (err error) {
+func copyEngineAssetAtomically(src, dst string) error {
 	input, err := os.Open(src)
 	if err != nil {
 		return err
@@ -207,34 +207,12 @@ func copyEngineAssetAtomically(src, dst string) (err error) {
 		return fmt.Errorf("engine asset is not a regular file: %s", src)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-	output, err := os.CreateTemp(filepath.Dir(dst), filepath.Base(dst)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmpPath := output.Name()
-	defer func() {
-		if output != nil {
-			_ = output.Close()
+	return fileutil.WriteFileAtomic(dst, func(output *os.File) error {
+		if _, err := io.Copy(output, input); err != nil {
+			return err
 		}
-		if err != nil {
-			_ = os.Remove(tmpPath)
-		}
-	}()
-
-	if _, err := io.Copy(output, input); err != nil {
-		return err
-	}
-	if err := output.Chmod(info.Mode().Perm()); err != nil {
-		return err
-	}
-	if err := output.Close(); err != nil {
-		return err
-	}
-	output = nil
-	return fileutil.ReplaceFile(tmpPath, dst)
+		return output.Chmod(info.Mode().Perm())
+	}, nil)
 }
 
 func linkOrCopyFile(src, dst string) error {

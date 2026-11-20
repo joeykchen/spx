@@ -168,3 +168,27 @@ func assertReplacementContent(t *testing.T, path, want string) {
 		t.Fatalf("%s = %q, %v; want %q", path, got, err, want)
 	}
 }
+
+func TestWriteFileAtomicDiscardsPanickedWrite(t *testing.T) {
+	dir := t.TempDir()
+	dst := filepath.Join(dir, "asset")
+	writeReplacementFile(t, dst, "old", 0o600)
+	wantPanic := errors.New("write stopped")
+	func() {
+		defer func() {
+			if got := recover(); got != wantPanic {
+				t.Fatalf("panic = %v, want %v", got, wantPanic)
+			}
+		}()
+		WriteFileAtomic(dst, func(f *os.File) error {
+			if _, err := f.WriteString("partial"); err != nil {
+				t.Fatal(err)
+			}
+			panic(wantPanic)
+		}, nil)
+	}()
+	assertReplacementContent(t, dst, "old")
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 1 {
+		t.Fatalf("files after failed write = %v, %v", entries, err)
+	}
+}
