@@ -134,13 +134,8 @@ func TestDownloadBinariesFromZipValidatesBeforeInstalling(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			root := t.TempDir()
-			env := engineDownloadEnv{
-				assetDir: filepath.Join(root, "assets"),
-				cacheDir: filepath.Join(root, "cache"),
-				goBinDir: filepath.Join(root, "bin"),
-			}
-			mustMkdirAll(t, env.assetDir)
+			env := newEngineDownloadFixture(t, "")
+			env.cacheDir = filepath.Join(env.cacheDir, "downloads") // Created on first use.
 			const zipName = "binaries.zip"
 			zipPath := filepath.Join(env.assetDir, zipName)
 			if tt.files == nil {
@@ -170,21 +165,15 @@ func TestDownloadBinariesFromZipValidatesBeforeInstalling(t *testing.T) {
 			if tt.message != "" && !strings.Contains(err.Error(), tt.message) {
 				t.Errorf("downloadBinariesFromZip error = %v, want %q", err, tt.message)
 			}
+			want := make(map[string]string)
 			for _, install := range installs {
-				want := "new " + install.assetName
 				if wantFailure {
-					want = "old " + install.assetName
+					want[install.dst] = "old " + install.assetName
+				} else {
+					want[install.dst] = "new " + install.assetName
 				}
-				if content, err := os.ReadFile(install.dst); err != nil || string(content) != want {
-					t.Errorf("installed %s = %q, err = %v; want %q", install.assetName, content, err, want)
-				}
 			}
-			if entries, err := os.ReadDir(env.cacheDir); err != nil || len(entries) != 0 {
-				t.Errorf("cache contents = %v, err = %v; want no downloaded ZIP or extraction files", entries, err)
-			}
-			if entries, err := os.ReadDir(env.goBinDir); err != nil || len(entries) != len(installs) {
-				t.Errorf("binary directory contents = %v, err = %v; want only installed binaries", entries, err)
-			}
+			assertEngineDownloadFiles(t, env, want)
 			if _, err := os.Stat(zipPath); err != nil {
 				t.Errorf("local source archive was removed: %v", err)
 			}
@@ -810,6 +799,7 @@ func TestDownloadRuntimePackValidatesBeforeInstalling(t *testing.T) {
 		wantErr       error
 	}{
 		{name: "complete bundle", files: map[string]string{"gdspxrt.pck": "new pack", "runtime.gdextension": "new extension"}},
+		{name: "missing pack", files: map[string]string{"runtime.gdextension": "new extension"}, message: "missing gdspxrt.pck"},
 		{name: "missing extension", files: map[string]string{"gdspxrt.pck": "new pack"}, message: "missing runtime.gdextension"},
 		{name: "unsupported entry", files: map[string]string{"gdspxrt.pck": "new pack", "runtime.gdextension": "new extension", "extra.txt": "unexpected"}, message: "unsupported entry"},
 		{name: "pack is a directory", files: map[string]string{"gdspxrt.pck/": "", "runtime.gdextension": "new extension"}, message: "unsupported entry"},
