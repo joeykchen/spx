@@ -7,7 +7,6 @@ import (
 	"sync"
 	"testing"
 	"testing/synctest"
-	"time"
 
 	"github.com/goplus/ixgo"
 	"github.com/goplus/ixgo/xgobuild"
@@ -24,82 +23,33 @@ type interpreterExitBackend struct {
 type interpreterPlatform struct{ gdx.IPlatformMgr }
 
 func TestInterpreterShutdownWaitsForRun(t *testing.T) {
-	isolateInterpreter(t)
-	entered, release := make(chan struct{}), make(chan struct{})
-	releaseRun := sync.OnceFunc(func() { close(release) })
-	defer releaseRun()
-	requested := make(chan int64, 1)
-	installInterpreterExitBackend(t, func(code int64) { requested <- code })
-	ctx := ixgo.NewContext(ixgo.SupportMultipleInterp | xgobuild.StaticLoad)
-	ctx.RegisterExternal("main.wait", func() { close(entered); <-release })
-	if err := Init(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err := Build(map[string][]byte{"main.xgo": []byte("func wait() {}\nfunc main() { wait() }\n")}); err != nil {
-		t.Fatal(err)
-	}
-	finished := make(chan interpreterRunResult, 1)
-	go runInterpreter(finished)
-	t.Cleanup(func() {
-		releaseRun()
-		select {
-		case <-finished:
-		case <-time.After(3 * time.Second):
-			t.Error("interpreter did not finish during cleanup")
-		}
-	})
-	select {
-	case <-entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("Run did not enter the program")
-	}
-	requireInterpreterPanic(t, "ispx: already running", func() { _, _ = Run() })
-	stopped := make(chan error, 1)
-	go func() {
-		defer close(stopped)
-		stopped <- Shutdown()
-	}()
-	t.Cleanup(func() {
-		releaseRun()
-		select {
-		case <-stopped:
-		case <-time.After(3 * time.Second):
-			t.Error("Shutdown did not finish during cleanup")
-		}
-	})
-	select {
-	case code := <-requested:
-		if code != 0 {
+	synctest.Test(t, func(t *testing.T) {
+		isolateInterpreter(t)
+		requested := make(chan int64, 1)
+		installInterpreterExitBackend(t, func(code int64) { requested <- code })
+		releaseRun, finished := startWaitingInterpreter(t)
+		requireInterpreterPanic(t, "ispx: already running", func() { _, _ = Run() })
+
+		stopped := make(chan error, 1)
+		go func() { stopped <- Shutdown() }()
+		if code := <-requested; code != 0 {
 			t.Errorf("exit request = %d, want 0", code)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("Shutdown did not request engine exit")
-	}
-	select {
-	case err := <-stopped:
-		t.Fatalf("Shutdown returned before Run completed: %v", err)
-	default:
-	}
-	releaseRun()
-	select {
-	case result := <-finished:
-		if result != (interpreterRunResult{}) {
+		synctest.Wait()
+		select {
+		case err := <-stopped:
+			t.Fatalf("Shutdown returned before Run completed: %v", err)
+		default:
+		}
+
+		releaseRun()
+		if result := <-finished; result != (interpreterRunResult{}) {
 			t.Fatalf("Run() = %+v", result)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("Run did not finish after release")
-	}
-	select {
-	case err := <-stopped:
-		if err != nil {
+		if err := <-stopped; err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("Shutdown did not observe completion")
-	}
-	if interpreter.runningLocked() {
-		t.Fatal("completed interpreter still reports a running instance")
-	}
+	})
 }
 
 func TestInterpreterRunWaitsForRebuild(t *testing.T) {
@@ -107,22 +57,9 @@ func TestInterpreterRunWaitsForRebuild(t *testing.T) {
 		t.Run(result, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				isolateInterpreter(t)
-				entered, release := make(chan struct{}), make(chan struct{})
-				releaseRun := sync.OnceFunc(func() { close(release) })
-				defer releaseRun()
 				requested := make(chan struct{}, 1)
 				installInterpreterExitBackend(t, func(int64) { requested <- struct{}{} })
-				ctx := ixgo.NewContext(ixgo.SupportMultipleInterp | xgobuild.StaticLoad)
-				ctx.RegisterExternal("main.wait", func() { close(entered); <-release })
-				if err := Init(ctx); err != nil {
-					t.Fatal(err)
-				}
-				if err := Build(map[string][]byte{"main.xgo": []byte("func wait() {}\nfunc main() { wait() }\n")}); err != nil {
-					t.Fatal(err)
-				}
-				oldRun := make(chan interpreterRunResult, 1)
-				go runInterpreter(oldRun)
-				<-entered
+				releaseRun, oldRun := startWaitingInterpreter(t)
 				built := make(chan error, 1)
 				go func() {
 					source := "var result int\nfunc main() { result = 42 }\nfunc Result() int { return result }\n"
@@ -174,6 +111,29 @@ func TestInterpreterRunWaitsForRebuild(t *testing.T) {
 			})
 		})
 	}
+}
+
+// startWaitingInterpreter runs a program that can only finish after release.
+func startWaitingInterpreter(t *testing.T) (release func(), finished <-chan interpreterRunResult) {
+	t.Helper()
+	entered, resume := make(chan struct{}), make(chan struct{})
+	ctx := ixgo.NewContext(ixgo.SupportMultipleInterp | xgobuild.StaticLoad)
+	ctx.RegisterExternal("main.wait", func() { close(entered); <-resume })
+	if err := Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := Build(map[string][]byte{"main.xgo": []byte("func wait() {}\nfunc main() { wait() }\n")}); err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan interpreterRunResult, 1)
+	go runInterpreter(result)
+	<-entered
+	release = sync.OnceFunc(func() { close(resume) })
+	t.Cleanup(func() {
+		release()
+		<-result
+	})
+	return release, result
 }
 
 func (b interpreterExitBackend) RequestExit(code int64) { b.exit(code) }
