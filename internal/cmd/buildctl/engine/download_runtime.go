@@ -70,7 +70,7 @@ func downloadRuntimePack(env engineDownloadEnv) error {
 		}
 	}
 	for _, name := range []string{"runtime.gdextension", "gdspxrt.pck"} {
-		if err := copyEngineAssetAtomically(filepath.Join(extractDir, name), destinations[name]); err != nil {
+		if err := copyEngineAssetAtomically(filepath.Join(extractDir, name), destinations[name], nil); err != nil {
 			return err
 		}
 	}

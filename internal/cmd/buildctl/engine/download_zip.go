@@ -57,7 +57,7 @@ func downloadBinariesFromZip(env engineDownloadEnv, zipName string, installs ...
 		}
 	}
 	for _, install := range installs {
-		if err := copyEngineAssetAtomically(filepath.Join(extractDir, install.assetName), install.dst); err != nil {
+		if err := copyEngineAssetAtomically(filepath.Join(extractDir, install.assetName), install.dst, nil); err != nil {
 			return err
 		}
 	}
