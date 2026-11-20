@@ -20,7 +20,6 @@ package fileutil
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -51,50 +50,18 @@ func TestWindowsPath(t *testing.T) {
 }
 
 func TestReplaceFileWindowsLongPaths(t *testing.T) {
-	for _, existing := range []bool{false, true} {
-		name := "new destination"
-		if existing {
-			name = "existing destination"
-		}
-		t.Run(name, func(t *testing.T) {
-			dir := t.TempDir()
-			for len(filepath.Join(dir, "source")) <= 300 {
-				dir = filepath.Join(dir, "segment-0123456789")
-			}
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			src, dst := filepath.Join(dir, "source"), filepath.Join(dir, "destination")
-			if err := os.WriteFile(src, []byte("replacement"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			if existing {
-				if err := os.WriteFile(dst, []byte("existing"), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if err := ReplaceFile(src, dst); err != nil {
-				t.Fatal(err)
-			}
-			if data, err := os.ReadFile(dst); err != nil || string(data) != "replacement" {
-				t.Fatalf("destination content = %q, err = %v", data, err)
-			}
-			if _, err := os.Lstat(src); !os.IsNotExist(err) {
-				t.Fatalf("source still exists: %v", err)
-			}
-		})
+	dir := t.TempDir()
+	for len(dir) <= 300 {
+		dir = filepath.Join(dir, "segment-0123456789")
 	}
+	testReplaceFile(t, dir)
 }
 
 func TestReplaceFileWindowsLockedDestination(t *testing.T) {
 	dir := t.TempDir()
 	src, dst := filepath.Join(dir, "source"), filepath.Join(dir, "destination")
-	if err := os.WriteFile(src, []byte("replacement"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(dst, []byte("existing"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeReplacementFile(t, src, "replacement", 0o600)
+	writeReplacementFile(t, dst, "existing", 0o600)
 	path, err := windows.UTF16PtrFromString(dst)
 	if err != nil {
 		t.Fatal(err)
@@ -108,10 +75,6 @@ func TestReplaceFileWindowsLockedDestination(t *testing.T) {
 	if err := ReplaceFile(src, dst); !errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
 		t.Fatalf("locked destination error = %v, want sharing violation", err)
 	}
-	if data, err := os.ReadFile(dst); err != nil || string(data) != "existing" {
-		t.Fatalf("failed replacement changed destination: %q, %v", data, err)
-	}
-	if data, err := os.ReadFile(src); err != nil || string(data) != "replacement" {
-		t.Fatalf("failed replacement consumed source: %q, %v", data, err)
-	}
+	assertReplacementContent(t, dst, "existing")
+	assertReplacementContent(t, src, "replacement")
 }

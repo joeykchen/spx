@@ -266,7 +266,8 @@ if len(log_path.read_text(encoding="utf-8").splitlines()) == int(os.environ.get(
                      "TestReplaceRegularFileRejectsDestinationBeforeRenaming",
                      "TestReplaceRegularFilePreservesFilesystemErrors",
                      "TestReplaceFile", "TestReplaceFilePreservesFilesOnFailure",
-                     "TestWindowsPath", "TestReplaceFileWindowsLongPaths", "TestReplaceFileWindowsLockedDestination"):
+                     "TestWindowsPath", "TestReplaceFileWindowsLongPaths", "TestReplaceFileWindowsLockedDestination",
+                     "TestWriteFileAtomicDiscardsPanickedWrite"):
             with self.subTest(name=name):
                 self.assertRegex(name, args[args.index("-run") + 1])
 
