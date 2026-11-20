@@ -33,22 +33,34 @@ type binaryInstall struct {
 
 func downloadBinariesFromZip(env engineDownloadEnv, zipName string, installs ...binaryInstall) error {
 	return withExtractedEngineArchive(env, zipName, func(extractDir string) error {
-		for _, install := range installs {
-			info, err := os.Stat(filepath.Join(extractDir, install.assetName))
-			if err != nil {
-				return fmt.Errorf("engine archive %s is missing %s: %w", zipName, install.assetName, err)
-			}
-			if !info.Mode().IsRegular() {
-				return fmt.Errorf("engine archive entry %s is not a regular file", install.assetName)
-			}
-		}
-		for _, install := range installs {
-			if err := copyEngineAssetAtomically(filepath.Join(extractDir, install.assetName), install.dst); err != nil {
-				return err
-			}
-		}
-		return nil
+		return installEngineBinaries(extractDir, "engine archive "+zipName, installs)
 	})
+}
+
+func installEngineBinaries(extractDir, description string, installs []binaryInstall) error {
+	for _, install := range installs {
+		info, err := os.Stat(filepath.Join(extractDir, install.assetName))
+		if err != nil {
+			return fmt.Errorf("%s is missing %s: %w", description, install.assetName, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("engine archive entry %s is not a regular file", install.assetName)
+		}
+		// A blocked later destination must not leave an earlier binary updated.
+		if dst, err := os.Lstat(install.dst); err == nil {
+			if dst.IsDir() {
+				return fmt.Errorf("engine asset destination %q is a directory", install.dst)
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	for _, install := range installs {
+		if err := copyEngineAssetAtomically(filepath.Join(extractDir, install.assetName), install.dst); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Each download owns both the staged archive and its extracted contents.

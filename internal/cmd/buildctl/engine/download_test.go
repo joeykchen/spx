@@ -875,7 +875,7 @@ func TestDownloadRuntimePackKeepsLocalArchiveInCache(t *testing.T) {
 }
 
 func TestDownloadRuntimePackPreservesInstalledFilesOnIOFailure(t *testing.T) {
-	for _, failure := range []string{"unreadable archive", "read-only cache", "occupied extension destination"} {
+	for _, failure := range []string{"unreadable archive", "read-only cache", "occupied extension destination", "occupied pack destination"} {
 		t.Run(failure, func(t *testing.T) {
 			env := newEngineDownloadFixture(t, "")
 			archive := filepath.Join(env.assetDir, release.RuntimeAssetZipName)
@@ -884,13 +884,19 @@ func TestDownloadRuntimePackPreservesInstalledFilesOnIOFailure(t *testing.T) {
 			}
 			pack := filepath.Join(env.goBinDir, "gdspxrttest.pck")
 			extension := filepath.Join(env.goBinDir, "runtime.gdextension")
-			if failure == "occupied extension destination" {
+			blockedDestination := false
+			switch failure {
+			case "occupied extension destination":
 				extension = filepath.Join(extension, "keep")
+				blockedDestination = true
+			case "occupied pack destination":
+				pack = filepath.Join(pack, "keep")
+				blockedDestination = true
 			}
 			mustWriteFile(t, pack, []byte("old pack"))
 			mustWriteFile(t, extension, []byte("old extension"))
 
-			if failure != "occupied extension destination" {
+			if !blockedDestination {
 				if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 					t.Skip("requires POSIX permissions enforced for an unprivileged user")
 				}
@@ -908,7 +914,7 @@ func TestDownloadRuntimePackPreservesInstalledFilesOnIOFailure(t *testing.T) {
 				t.Cleanup(func() { _ = os.Chmod(path, info.Mode().Perm()) })
 			}
 			err := downloadRuntimePack(env)
-			if err == nil || failure != "occupied extension destination" && !errors.Is(err, os.ErrPermission) {
+			if err == nil || !blockedDestination && !errors.Is(err, os.ErrPermission) {
 				t.Fatalf("installation error = %v, want %s", err, failure)
 			}
 			for path, want := range map[string]string{pack: "old pack", extension: "old extension"} {
