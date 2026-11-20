@@ -47,7 +47,7 @@ func fetchEngineAsset(env engineDownloadEnv, name, dst string) error {
 			return err
 		}
 		fmt.Fprintf(os.Stdout, "Installing local engine asset %s -> %s\n", src, dst)
-		return copyEngineAssetAtomically(src, dst, verify)
+		return copyEngineAssetWithVerification(src, dst, verify)
 	}
 
 	// The HTTP downloader can report a response close error after writing its
@@ -189,7 +189,11 @@ func findLocalEngineAsset(assetDir, name string) (string, error) {
 	}
 }
 
-func copyEngineAssetAtomically(src, dst string, verify func(string) error) error {
+func copyEngineAssetAtomically(src, dst string) error {
+	return copyEngineAssetWithVerification(src, dst, nil)
+}
+
+func copyEngineAssetWithVerification(src, dst string, verify func(string) error) error {
 	input, err := os.Open(src)
 	if err != nil {
 		return err
