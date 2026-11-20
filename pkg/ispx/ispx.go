@@ -34,11 +34,15 @@ import (
 // interpreterRuntime owns build admission and the lifetime of each interpreter.
 // done is nil before Run, open while running, and closed after it is consumed.
 type interpreterRuntime struct {
-	mu          sync.Mutex
+	// Initialization is immutable after Init succeeds. Exit callbacks may
+	// check it while BuildFS or Shutdown waits for the active run.
+	initMu      sync.Mutex
 	ctx         *ixgo.Context
-	interp      *ixgo.Interp
-	done        chan struct{}
 	optimizeSSA bool
+
+	mu     sync.Mutex // serializes builds, shutdown and Run admission
+	interp *ixgo.Interp
+	done   chan struct{}
 }
 
 var interpreter interpreterRuntime
@@ -83,8 +87,8 @@ func WithSSAOptimization() InitOption {
 
 // ConfigureFilesystemRoots sets strict project and asset roots before Init.
 func ConfigureFilesystemRoots(projectDir, assetDir string) error {
-	interpreter.mu.Lock()
-	defer interpreter.mu.Unlock()
+	interpreter.initMu.Lock()
+	defer interpreter.initMu.Unlock()
 	if interpreter.ctx != nil {
 		return fmt.Errorf("ispx: filesystem roots must be configured before Init")
 	}
@@ -99,8 +103,8 @@ func ConfigureFilesystemRoots(projectDir, assetDir string) error {
 // If ctx.Lookup is nil, a default lookup function will be set.
 func Init(ctx *ixgo.Context, options ...InitOption) error {
 	r := &interpreter
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.initMu.Lock()
+	defer r.initMu.Unlock()
 
 	if r.ctx != nil {
 		panic("ispx: already initialized")
@@ -157,12 +161,15 @@ func Build(files map[string][]byte) error {
 // new runs and other builds out until the new interpreter is ready.
 func BuildFS(fsys fs.FS) error {
 	r := &interpreter
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.ctx == nil {
+	r.initMu.Lock()
+	ctx, optimizeSSA := r.ctx, r.optimizeSSA
+	r.initMu.Unlock()
+	if ctx == nil {
 		panic("ispx: not initialized")
 	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.stopLocked()
 
 	// Release previous interpreter resources if any.
@@ -172,22 +179,22 @@ func BuildFS(fsys fs.FS) error {
 	}
 	r.done = nil
 
-	source, err := xgobuild.BuildFSDir(r.ctx, newXGoParserFS(fsys), ".")
+	source, err := xgobuild.BuildFSDir(ctx, newXGoParserFS(fsys), ".")
 	if err != nil {
 		return fmt.Errorf("failed to build XGo source: %w", err)
 	}
 
-	pkg, err := r.ctx.LoadFile("main.go", source)
+	pkg, err := ctx.LoadFile("main.go", source)
 	if err != nil {
 		return fmt.Errorf("failed to load XGo source: %w", err)
 	}
-	if r.optimizeSSA {
+	if optimizeSSA {
 		if err := transform.Transform(pkg); err != nil {
 			return fmt.Errorf("failed to transform SSA: %w", err)
 		}
 	}
 
-	interp, err := r.ctx.NewInterp(pkg)
+	interp, err := ctx.NewInterp(pkg)
 	if err != nil {
 		return fmt.Errorf("failed to create interp: %w", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/goplus/ixgo"
 	"github.com/goplus/ixgo/xgobuild"
@@ -109,6 +110,47 @@ func TestInterpreterRunWaitsForRebuild(t *testing.T) {
 					t.Fatalf("rebuilt program result = %v, %v", value, err)
 				}
 			})
+		})
+	}
+}
+
+func TestInterpreterExitCallbackCanCheckInitialization(t *testing.T) {
+	for _, stop := range []struct {
+		name string
+		call func() error
+	}{
+		{"shutdown", Shutdown},
+		{"rebuild", func() error {
+			return Build(map[string][]byte{"main.xgo": []byte("func main() {}")})
+		}},
+	} {
+		t.Run(stop.name, func(t *testing.T) {
+			isolateInterpreter(t)
+			releaseRun, finished := startWaitingInterpreter(t)
+			checked := make(chan struct{})
+			installInterpreterExitBackend(t, func(int64) {
+				// Bound regressions without leaving the callback or interpreter stuck.
+				go func() {
+					defer close(checked)
+					if err := ConfigureFilesystemRoots("", ""); err == nil || !strings.Contains(err.Error(), "before Init") {
+						t.Errorf("configuring roots during exit = %v", err)
+					}
+					requireInterpreterPanic(t, "ispx: already initialized", func() { _ = Init(nil) })
+				}()
+				select {
+				case <-checked:
+				case <-time.After(3 * time.Second):
+					t.Error("exit callback blocked checking an already initialized interpreter")
+				}
+				releaseRun()
+			})
+			if err := stop.call(); err != nil {
+				t.Error(err)
+			}
+			<-checked
+			if got := <-finished; got != (interpreterRunResult{}) {
+				t.Errorf("stopped Run() = %+v", got)
+			}
 		})
 	}
 }
