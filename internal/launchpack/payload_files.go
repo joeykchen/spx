@@ -148,35 +148,27 @@ func hasBuildFlag(flags []string, name string) bool {
 
 func traceEnabled(flags []string) bool { return hasBuildFlag(flags, "x") || hasBuildFlag(flags, "v") }
 
-func sanitizeEnvironment(env []string) []string {
-	if env == nil {
-		env = os.Environ()
+func hostGoEnv(base []string, goWork string, enableCGO bool) []string {
+	if base == nil {
+		base = os.Environ()
 	}
-	result := make([]string, 0, len(env))
-	for _, entry := range env {
+	env := make([]string, 0, len(base)+5)
+	for _, entry := range base {
 		key, _, ok := strings.Cut(entry, "=")
-		if ok && (key == "GOFLAGS" || key == "GOWORK" || key == "GOOS" || key == "GOARCH" || key == "CGO_ENABLED") {
-			continue
+		if ok {
+			switch key {
+			case "GOFLAGS", "GOWORK", "GOOS", "GOARCH", "CGO_ENABLED":
+				continue
+			}
+			if enableCGO && strings.HasPrefix(key, "CGO_") {
+				continue
+			}
 		}
-		result = append(result, entry)
+		env = append(env, entry)
 	}
-	return result
-}
-
-func hostGoEnv(cfg Config, base []string) []string {
-	env := sanitizeEnvironment(base)
-	return append(env, "GOFLAGS=", "GOWORK="+cfg.GoWork, "GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH, "CGO_ENABLED=0")
-}
-
-func sourceBridgeEnv(cfg Config, base []string) []string {
-	env := sanitizeEnvironment(base)
-	filtered := env[:0]
-	for _, entry := range env {
-		key, _, ok := strings.Cut(entry, "=")
-		if ok && strings.HasPrefix(key, "CGO_") {
-			continue
-		}
-		filtered = append(filtered, entry)
+	cgo := "CGO_ENABLED=0"
+	if enableCGO {
+		cgo = "CGO_ENABLED=1"
 	}
-	return append(filtered, "GOFLAGS=", "GOWORK="+cfg.GoWork, "GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH, "CGO_ENABLED=1")
+	return append(env, "GOFLAGS=", "GOWORK="+goWork, "GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH, cgo)
 }

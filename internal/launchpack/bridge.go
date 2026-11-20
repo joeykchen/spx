@@ -57,7 +57,7 @@ func BuildSourceBridge(ctx context.Context, cfg Config) (string, func(), error) 
 	}
 	bridgePath := filepath.Join(workDir, bridgeName)
 	args := sourceBridgeBuildArgs(bridgePath, cfg.BridgePackage, runtime.GOOS)
-	command := cfg.goBuildCommand(ctx, sourceBridgeEnv(cfg, cfg.IO.Env), args...)
+	command := cfg.goBuildCommand(ctx, "c-shared", args...)
 	if err := command.Run(); err != nil {
 		cleanup()
 		return "", nil, fmt.Errorf("launchpack: build source interpreter bridge: %w", err)
@@ -74,7 +74,7 @@ func BuildSourceBridge(ctx context.Context, cfg Config) (string, func(), error) 
 }
 
 func sourceBridgeBuildArgs(bridgePath, bridgePackage, goos string) []string {
-	args := []string{"-buildmode=c-shared"}
+	var args []string
 	if goos == "windows" {
 		args = append(args, "-ldflags=-extldflags=-Wl,--allow-multiple-definition")
 	}

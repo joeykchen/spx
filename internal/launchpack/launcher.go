@@ -111,7 +111,7 @@ func compileLauncher(ctx context.Context, cfg Config, buildPayload payloadBuilde
 		return fmt.Errorf("launchpack: write generated launcher: %w", err)
 	}
 
-	command := cfg.goBuildCommand(ctx, hostGoEnv(cfg, cfg.IO.Env), "-buildmode=exe", "-o", cfg.Output, mainPath)
+	command := cfg.goBuildCommand(ctx, "exe", "-o", cfg.Output, mainPath)
 	if err := cfg.verifyGraph(ctx, "before launcher build"); err != nil {
 		return err
 	}
@@ -132,13 +132,14 @@ func compileLauncher(ctx context.Context, cfg Config, buildPayload payloadBuilde
 	return validateHostExecutable(cfg.Output)
 }
 
-func (cfg Config) goBuildCommand(ctx context.Context, env []string, buildArgs ...string) *exec.Cmd {
+func (cfg Config) goBuildCommand(ctx context.Context, buildMode string, buildArgs ...string) *exec.Cmd {
 	args := append([]string{"build"}, cfg.GraphFlags...)
 	args = append(args, normalizedGoBuildFlags(cfg.BuildFlags)...)
+	args = append(args, "-buildmode="+buildMode)
 	args = append(args, buildArgs...)
 	command := exec.CommandContext(ctx, cfg.GoCommand, args...)
 	command.Dir = cfg.WorkDir
-	command.Env = env
+	command.Env = hostGoEnv(cfg.IO.Env, cfg.GoWork, buildMode == "c-shared")
 	command.Stdin = cfg.IO.Stdin
 	command.Stdout = cfg.IO.Stdout
 	command.Stderr = cfg.IO.Stderr
