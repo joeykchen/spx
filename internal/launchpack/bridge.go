@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 )
@@ -57,13 +56,8 @@ func BuildSourceBridge(ctx context.Context, cfg Config) (string, func(), error) 
 		}
 	}
 	bridgePath := filepath.Join(workDir, bridgeName)
-	args := sourceBridgeBuildArgs(cfg, bridgePath)
-	command := exec.CommandContext(ctx, cfg.GoCommand, args...)
-	command.Dir = cfg.WorkDir
-	command.Env = sourceBridgeEnv(cfg, cfg.IO.Env)
-	command.Stdin = cfg.IO.Stdin
-	command.Stdout = cfg.IO.Stdout
-	command.Stderr = cfg.IO.Stderr
+	args := sourceBridgeBuildArgs(bridgePath, cfg.BridgePackage, runtime.GOOS)
+	command := cfg.goBuildCommand(ctx, sourceBridgeEnv(cfg, cfg.IO.Env), args...)
 	if err := command.Run(); err != nil {
 		cleanup()
 		return "", nil, fmt.Errorf("launchpack: build source interpreter bridge: %w", err)
@@ -79,18 +73,12 @@ func BuildSourceBridge(ctx context.Context, cfg Config) (string, func(), error) 
 	return bridgePath, cleanup, nil
 }
 
-func sourceBridgeBuildArgs(cfg Config, bridgePath string) []string {
-	return sourceBridgeBuildArgsForGOOS(cfg, bridgePath, runtime.GOOS)
-}
-
-func sourceBridgeBuildArgsForGOOS(cfg Config, bridgePath, goos string) []string {
-	args := append([]string{"build"}, cfg.GraphFlags...)
-	args = append(args, normalizedGoBuildFlags(cfg.BuildFlags)...)
-	args = append(args, "-buildmode=c-shared")
+func sourceBridgeBuildArgs(bridgePath, bridgePackage, goos string) []string {
+	args := []string{"-buildmode=c-shared"}
 	if goos == "windows" {
 		args = append(args, "-ldflags=-extldflags=-Wl,--allow-multiple-definition")
 	}
-	return append(args, "-o", bridgePath, cfg.BridgePackage)
+	return append(args, "-o", bridgePath, bridgePackage)
 }
 
 func bridgeFileName(goos, goarch string) (string, error) {

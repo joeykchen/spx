@@ -103,7 +103,7 @@ func TestBuildSourceBridgeChecksGraphAndCleansFailures(t *testing.T) {
 	if _, err := bridgeFileName("plan9", "amd64"); err == nil {
 		t.Fatal("unsupported host accepted")
 	}
-	args := sourceBridgeBuildArgsForGOOS(cfg, "bridge.dll", "windows")
+	args := sourceBridgeBuildArgs("bridge.dll", "./bridge", "windows")
 	if !slices.Contains(args, "-ldflags=-extldflags=-Wl,--allow-multiple-definition") {
 		t.Fatalf("Windows linker flags = %q", args)
 	}
