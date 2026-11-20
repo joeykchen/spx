@@ -147,6 +147,22 @@ func TestRegisterSchemaAndOpen(t *testing.T) {
 	if dir, err := Open("test://replacement"); dir != nil || !errors.Is(err, wantErr) {
 		t.Fatalf("Open after replacement = (%v, %v), want opener error", dir, err)
 	}
+
+	// BuildFS can replace the default opener while engine callbacks still open assets.
+	replaced := make(chan struct{})
+	go func() {
+		defer close(replaced)
+		for range 64 {
+			RegisterSchema("", func(string) (Dir, error) { return wantDir, nil })
+		}
+	}()
+	for range 64 {
+		dir, err := Open("sounds:effect.wav")
+		if err != nil || dir != wantDir {
+			t.Errorf("Open during replacement = (%v, %v)", dir, err)
+		}
+	}
+	<-replaced
 }
 
 func TestDirEntriesFromFS(t *testing.T) {

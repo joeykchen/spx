@@ -21,6 +21,7 @@ import (
 	"io"
 	iofs "io/fs"
 	"strings"
+	"sync"
 )
 
 // -------------------------------------------------------------------------------------
@@ -52,6 +53,7 @@ type GdDir interface {
 type OpenFunc = func(file string) (Dir, error)
 
 var (
+	schemasMu   sync.RWMutex
 	openSchemas = map[string]OpenFunc{}
 )
 
@@ -79,6 +81,12 @@ func IsAbsResourcePath(name string) bool {
 }
 
 func SplitSchema(path string) (schema, file string) {
+	schemasMu.RLock()
+	defer schemasMu.RUnlock()
+	return splitSchema(path)
+}
+
+func splitSchema(path string) (schema, file string) {
 	idx := strings.IndexAny(path, ":/\\ ")
 	if idx < 0 || path[idx] != ':' {
 		return "", path
@@ -99,12 +107,17 @@ func SplitSchema(path string) (schema, file string) {
 }
 
 func RegisterSchema(schema string, open OpenFunc) {
+	schemasMu.Lock()
+	defer schemasMu.Unlock()
 	openSchemas[schema] = open
 }
 
 func Open(path string) (Dir, error) {
-	schema, file := SplitSchema(path)
-	if open, ok := openSchemas[schema]; ok {
+	schemasMu.RLock()
+	schema, file := splitSchema(path)
+	open, ok := openSchemas[schema]
+	schemasMu.RUnlock()
+	if ok {
 		return open(file)
 	}
 	return nil, errors.New("fs.Open: unsupported schema - " + schema)
