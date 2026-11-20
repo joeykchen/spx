@@ -110,15 +110,15 @@ func TestEventTriggerPanicDoesNotPoisonNextDispatch(t *testing.T) {
 	}
 }
 
-func TestEventConcurrentTriggersOwnTheirSnapshots(t *testing.T) {
+func TestEventConcurrentSnapshotsSurviveSubscriptionChanges(t *testing.T) {
 	for name, create := range eventTestCases() {
 		t.Run(name, func(t *testing.T) {
 			e := create()
 			const workers = 8
-			var first, second atomic.Int32
+			var first, second, replacement atomic.Int32
 			entered := make(chan struct{}, workers)
 			release := make(chan struct{})
-			e.subscribe(func([2]int) {
+			firstID := e.subscribe(func([2]int) {
 				if first.Add(1) <= workers {
 					entered <- struct{}{}
 				}
@@ -132,10 +132,19 @@ func TestEventConcurrentTriggersOwnTheirSnapshots(t *testing.T) {
 			for range workers {
 				<-entered
 			}
+			// Subscription changes must not alter any in-flight callback list.
+			e.unsubscribeAll()
+			e.subscribe(func([2]int) { replacement.Add(1) })
+			// A retained token from before UnsubscribeAll cannot remove a new listener.
+			e.unsubscribe(firstID)
 			close(release)
 			done.Wait()
-			if first.Load() != workers || second.Load() != workers {
-				t.Fatalf("listener calls=%d,%d, want %d each", first.Load(), second.Load(), workers)
+			if first.Load() != workers || second.Load() != workers || replacement.Load() != 0 {
+				t.Fatalf("listener calls=%d,%d,%d, want %d,%d,0", first.Load(), second.Load(), replacement.Load(), workers, workers)
+			}
+			e.trigger(100)
+			if first.Load() != workers || second.Load() != workers || replacement.Load() != 1 {
+				t.Fatalf("next dispatch calls=%d,%d,%d, want %d,%d,1", first.Load(), second.Load(), replacement.Load(), workers, workers)
 			}
 		})
 	}

@@ -9,6 +9,14 @@ The Web interpreter has two Go modules:
 
 The browser assets and JavaScript tests remain shared under `cmd/ispx/web` and `cmd/ispx/tests`.
 
+The `pkg/ispx` runtime serializes `Build`/`BuildFS` and `Shutdown` with new
+`Run` calls. A rebuild waits for the active run to finish before releasing its
+interpreter and publishing the replacement; a concurrent `Run` waits for that
+build. Each successful build can be run once, so rebuild after `Run` returns,
+including after shutdown. `BuildFS` borrows its filesystem for lazy resource
+reads. A failed rebuild leaves the previous resource schema registered but
+does not leave a runnable interpreter.
+
 Run these commands from the repository root:
 
 ```sh

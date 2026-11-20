@@ -215,9 +215,9 @@ func TestStartFailureCancelsPreparedInputSession(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				mu.Lock()
-				ixgoCtx, ixgoInterp = ctx, interp
-				mu.Unlock()
+				interpreter.mu.Lock()
+				interpreter.ctx, interpreter.interp = ctx, interp
+				interpreter.mu.Unlock()
 				if result := start.Invoke(); !result.IsNull() {
 					t.Fatalf("first ispx_start = %v, want null", result)
 				}
@@ -226,9 +226,9 @@ func TestStartFailureCancelsPreparedInputSession(t *testing.T) {
 				case <-time.After(5 * time.Second):
 					t.Fatal("first interpreter did not enter the program")
 				}
-				mu.Lock()
-				firstRun = runDone
-				mu.Unlock()
+				interpreter.mu.Lock()
+				firstRun = interpreter.done
+				interpreter.mu.Unlock()
 				t.Cleanup(func() {
 					releaseRun()
 					select {
@@ -261,9 +261,9 @@ func TestStartFailureCancelsPreparedInputSession(t *testing.T) {
 			if want := "interpreter exited with panic: ispx: " + state; message != want {
 				t.Fatalf("runtime error = %q, want %q", message, want)
 			}
-			mu.Lock()
-			unchanged := runDone == firstRun
-			mu.Unlock()
+			interpreter.mu.Lock()
+			unchanged := interpreter.done == firstRun
+			interpreter.mu.Unlock()
 			if !unchanged {
 				t.Fatal("failed startup replaced the existing run")
 			}
@@ -359,9 +359,9 @@ func TestExportedBuildValidatesAndBuildsFiles(t *testing.T) {
 	if result := ispxBuild(js.Undefined(), []js.Value{files}); result != nil {
 		t.Fatalf("successful build = %v, want nil", result)
 	}
-	mu.Lock()
-	built := ixgoInterp != nil
-	mu.Unlock()
+	interpreter.mu.Lock()
+	built := interpreter.interp != nil
+	interpreter.mu.Unlock()
 	if !built {
 		t.Fatal("JavaScript build did not publish an interpreter")
 	}
@@ -423,9 +423,9 @@ func TestExportedStartReportsInterpreterFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mu.Lock()
-	ixgoCtx, ixgoInterp = ctx, interp
-	mu.Unlock()
+	interpreter.mu.Lock()
+	interpreter.ctx, interpreter.interp = ctx, interp
+	interpreter.mu.Unlock()
 	messages := make(chan string, 1)
 	reset := make(chan struct{}, 1)
 	setJSFunction(t, "gdspx_ext_on_runtime_panic", func(_ js.Value, args []js.Value) any {
@@ -444,9 +444,9 @@ func TestExportedStartReportsInterpreterFailure(t *testing.T) {
 	if message := <-messages; !strings.Contains(message, "interpreter exited with code") || !strings.Contains(message, "bridge failure") {
 		t.Fatalf("interpreter failure = %q", message)
 	}
-	mu.Lock()
-	running := runDone != nil
-	mu.Unlock()
+	interpreter.mu.Lock()
+	running := interpreter.runningLocked()
+	interpreter.mu.Unlock()
 	if running {
 		t.Fatal("failed interpreter still reports a running instance")
 	}
