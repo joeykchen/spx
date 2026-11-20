@@ -111,18 +111,15 @@ func (f *portableConfigRoot) ReadDir(n int) ([]fs.DirEntry, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
-	if n <= 0 {
-		entries := f.entries
-		f.entries = nil
-		return entries, nil
+	if n > 0 && n < len(f.entries) {
+		// A caller may append to its page while this handle serves the remainder.
+		page := f.entries[:n:n]
+		f.entries = f.entries[n:]
+		return page, nil
 	}
-	if len(f.entries) == 0 {
-		return nil, io.EOF
-	}
-	end := min(n, len(f.entries))
-	entries := f.entries[:end]
-	f.entries = f.entries[end:]
-	if len(entries) < n {
+	entries := f.entries
+	f.entries = nil
+	if n > len(entries) {
 		return entries, io.EOF
 	}
 	return entries, nil

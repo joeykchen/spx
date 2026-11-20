@@ -295,6 +295,10 @@ func TestPortableConfigRootReadDirPagination(t *testing.T) {
 				if !errors.Is(err, page.err) || !reflect.DeepEqual(names, page.names) {
 					t.Fatalf("ReadDir(%d) = (%v, %v), want (%v, %v)", page.n, names, err, page.names, page.err)
 				}
+				// Appending to a returned page must not overwrite the next page.
+				if len(entries) != 0 {
+					_ = append(entries, entries[0])
+				}
 				// Later pages must use the captured listing, even if the base changes.
 				directory.entries = nil
 				directory.err = fs.ErrPermission
