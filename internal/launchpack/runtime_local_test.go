@@ -95,10 +95,20 @@ func TestAcquireRuntimeAssetsPrefersExplicitLocalManifest(t *testing.T) {
 
 func TestRuntimeEnvironmentConfigOverridesProcess(t *testing.T) {
 	t.Setenv(runtimeCacheEnv, "/process-cache")
-	env := runtimeEnvironment(Config{RuntimeCacheRoot: "/config-cache"}, nil)
+	env := Config{RuntimeCacheRoot: "/config-cache"}.runtimeEnvironment()
 	value, found, duplicate := environmentValue(env, runtimeCacheEnv)
 	if !found || duplicate || value != "/config-cache" {
 		t.Fatalf("%s = %q, found %v, duplicate %v", runtimeCacheEnv, value, found, duplicate)
+	}
+}
+
+func TestSourceRuntimeGoQueryHonorsEmptyEnvironment(t *testing.T) {
+	t.Setenv("GOPATH", t.TempDir())
+	cfg := Config{WorkDir: t.TempDir(), IO: IO{Env: []string{}}}
+	launcherGoFixture(t, &cfg, `printf '%s' "${GOPATH-}"`)
+	_, err := resolveGoBin(context.Background(), cfg, cfg.runtimeEnvironment())
+	if err == nil || !strings.Contains(err.Error(), "Go environment has no GOPATH") {
+		t.Fatalf("Go query with empty environment: %v", err)
 	}
 }
 

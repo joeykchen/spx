@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/goplus/spx/v4/internal/release"
@@ -75,16 +76,12 @@ func acquireRuntimeAssetsWith(ctx context.Context, cfg Config, lock release.Runt
 	if dependencies.fetch == nil || dependencies.cacheRoot == nil {
 		return Assets{}, errors.New("launchpack: incomplete runtime acquisition dependencies")
 	}
-	env := runtimeEnvironment(cfg, cfg.IO.Env)
+	env := cfg.runtimeEnvironment()
 	spec, err := release.HostRuntimeSpecFor(lock, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return Assets{}, err
 	}
-	cacheDefault := dependencies.cacheRoot
-	if cfg.RuntimeCacheRoot != "" {
-		cacheDefault = func() string { return cfg.RuntimeCacheRoot }
-	}
-	cacheRoot, err := resolveRuntimeCacheRoot(env, cacheDefault)
+	cacheRoot, err := resolveRuntimeCacheRoot(env, dependencies.cacheRoot)
 	if err != nil {
 		return Assets{}, err
 	}
@@ -174,11 +171,11 @@ func environmentValue(env []string, key string) (value string, found, duplicate 
 	return value, found, false
 }
 
-func runtimeEnvironment(cfg Config, base []string) []string {
-	if base == nil {
-		base = os.Environ()
+func (cfg Config) runtimeEnvironment() []string {
+	env := slices.Clone(cfg.IO.Env)
+	if env == nil {
+		env = os.Environ()
 	}
-	env := append([]string(nil), base...)
 	for _, item := range []struct{ key, value string }{
 		{runtimeLocalManifestEnv, cfg.RuntimeManifestPath},
 		{runtimeAssetDirEnv, cfg.RuntimeAssetDir},
