@@ -32,23 +32,20 @@ import (
 // portableConfigFS replaces the project .config with the validated snapshot.
 // When the snapshot is absent, it hides a project .config instead.
 type portableConfigFS struct {
-	base    fs.FS
-	present bool
-	data    []byte
+	base fs.FS
+	portableConfigOverlay
 }
 
 type portableConfigRoot struct {
 	fs.File
-	overlay     *portableConfigFS
-	mu          sync.Mutex
-	initialized bool
-	entries     []fs.DirEntry
-	err         error
+	mu      sync.Mutex
+	overlay *portableConfigFS // cleared after the first read of this handle
+	entries []fs.DirEntry
+	err     error
 }
 
 type portableConfigFile struct {
 	*bytes.Reader
-	info portableConfigInfo
 }
 
 type portableConfigInfo struct {
@@ -60,7 +57,7 @@ func (f *portableConfigFS) Open(name string) (fs.File, error) {
 		if !isPortableConfigName(name) || !f.present {
 			return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 		}
-		return newPortableConfigFile(f.data), nil
+		return &portableConfigFile{bytes.NewReader(f.data)}, nil
 	}
 	file, err := f.base.Open(name)
 	if err != nil {
@@ -93,20 +90,24 @@ func (f *portableConfigFS) Lstat(name string) (fs.FileInfo, error) {
 	return fs.Lstat(f.base, name)
 }
 
+func (f *portableConfigFS) readRoot(file fs.File) ([]fs.DirEntry, error) {
+	directory, ok := file.(fs.ReadDirFile)
+	if !ok {
+		return nil, &fs.PathError{Op: "readdir", Path: ".", Err: fs.ErrInvalid}
+	}
+	entries, err := directory.ReadDir(-1)
+	if err != nil {
+		return nil, err
+	}
+	return f.overlayRootEntries(entries), nil
+}
+
 func (f *portableConfigRoot) ReadDir(n int) ([]fs.DirEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if !f.initialized {
-		f.initialized = true
-		directory, ok := f.File.(fs.ReadDirFile)
-		if !ok {
-			f.err = &fs.PathError{Op: "readdir", Path: ".", Err: fs.ErrInvalid}
-		} else {
-			f.entries, f.err = directory.ReadDir(-1)
-			if f.err == nil {
-				f.entries = f.overlay.overlayRootEntries(f.entries)
-			}
-		}
+	if f.overlay != nil {
+		f.entries, f.err = f.overlay.readRoot(f.File)
+		f.overlay = nil
 	}
 	if f.err != nil {
 		return nil, f.err
@@ -127,7 +128,9 @@ func (f *portableConfigRoot) ReadDir(n int) ([]fs.DirEntry, error) {
 
 func (f *portableConfigFile) Close() error { return nil }
 
-func (f *portableConfigFile) Stat() (fs.FileInfo, error) { return f.info, nil }
+func (f *portableConfigFile) Stat() (fs.FileInfo, error) {
+	return portableConfigInfo{size: f.Size()}, nil
+}
 
 func (portableConfigInfo) Name() string { return ".config" }
 
@@ -157,7 +160,7 @@ func (f *portableConfigFS) overlayRootEntries(entries []fs.DirEntry) []fs.DirEnt
 }
 
 func newPortableConfigFS(base fs.FS, overlay *portableConfigOverlay) *portableConfigFS {
-	return &portableConfigFS{base: base, present: overlay.present, data: overlay.data}
+	return &portableConfigFS{base: base, portableConfigOverlay: *overlay}
 }
 
 func isPortableConfigPath(name string) bool {
@@ -167,8 +170,4 @@ func isPortableConfigPath(name string) bool {
 
 func isPortableConfigName(name string) bool {
 	return name == ".config" || (runtime.GOOS == "windows" && strings.EqualFold(name, ".config"))
-}
-
-func newPortableConfigFile(data []byte) *portableConfigFile {
-	return &portableConfigFile{Reader: bytes.NewReader(data), info: portableConfigInfo{size: int64(len(data))}}
 }
