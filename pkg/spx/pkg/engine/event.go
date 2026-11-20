@@ -108,6 +108,7 @@ func (e *Event2[T1, T2]) Trigger(data1 T1, data2 T2) {
 
 type eventRegistry[A any] struct {
 	actions map[int]A
+	ordered []A
 	nextID  int
 	mutex   sync.Mutex
 }
@@ -117,6 +118,7 @@ func (r *eventRegistry[A]) subscribe(action A) int {
 	defer r.mutex.Unlock()
 	id := r.nextID
 	r.actions[id] = action
+	r.ordered = nil
 	r.nextID++
 	return id
 }
@@ -125,19 +127,24 @@ func (r *eventRegistry[A]) unsubscribe(id int) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	delete(r.actions, id)
+	r.ordered = nil
 }
 
 func (r *eventRegistry[A]) unsubscribeAll() {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	r.actions = make(map[int]A)
+	r.ordered = nil
 }
 
-// Each dispatch owns a sorted snapshot and invokes callbacks after unlocking,
-// so subscription changes and nested or concurrent triggers are independent.
+// Triggers share the ordered snapshot until subscriptions change. Never
+// modify its backing array: a callback may subscribe or trigger recursively.
 func (r *eventRegistry[A]) snapshot() []A {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
+	if r.ordered != nil || len(r.actions) == 0 {
+		return r.ordered
+	}
 	ids := make([]int, 0, len(r.actions))
 	for id := range r.actions {
 		ids = append(ids, id)
@@ -147,5 +154,6 @@ func (r *eventRegistry[A]) snapshot() []A {
 	for _, id := range ids {
 		actions = append(actions, r.actions[id])
 	}
+	r.ordered = actions
 	return actions
 }
